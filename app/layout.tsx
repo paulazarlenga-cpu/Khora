@@ -2,33 +2,16 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Alma & Casa | Gestión",
-  description: "Stock, ventas y compras del emprendimiento de aromatizadores.",
+  title: "KHORA | Gestión del emprendimiento",
+  description: "Ventas, pedidos, clientes, fabricación, stock y finanzas en un solo lugar.",
+  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
   openGraph: {
-    title: "Alma & Casa | Gestión",
-    description: "Stock, ventas y compras en un solo lugar",
-    images: [{ url: "/og.png", width: 1536, height: 1024 }],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Alma & Casa | Gestión",
-    description: "Stock, ventas y compras en un solo lugar",
-    images: ["/og.png"],
-  },
-  icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    title: "KHORA | Gestión simple para tu negocio",
+    description: "Una forma clara y cálida de manejar todo el emprendimiento.",
+    type: "website",
   },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html lang="es">
-      <body>{children}</body>
-    </html>
-  );
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  return <html lang="es"><body>{children}</body></html>;
 }

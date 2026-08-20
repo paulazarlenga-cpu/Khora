@@ -39,7 +39,13 @@ dev-error.log
 
 # typescript
 next-env.d.ts
+*.tsbuildinfo
 /dist/
 /.wrangler/
 /outputs/
 /work/
+
+# KHORA: bases locales y fuentes privadas de migración
+/.tmp-phase-a-d1/
+/01_Fuentes/
+/02_Documentacion/

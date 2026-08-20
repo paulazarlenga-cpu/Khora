@@ -1,73 +1,118 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { navigation, primaryNavigation, SectionId, type PrimaryNavigationItem } from "./khora-data";
+import { getOperationalOverview, groupSearchResults, searchKhora, type GlobalSearchResult, type NavigationIntent } from "./khora-operations";
+import { SectionContent } from "./khora-sections";
+import { KhoraIcon, moduleIcons, type KhoraIconName } from "./khora-icons";
 
-type Product = { code:string; name:string; cost:number; price:number; stock:number; minimum:number };
-type Sale = { id:number; date:string; client:string; code:string; product:string; quantity:number; total:number; status:string };
-type Purchase = { id:number; date:string; category:string; code:string; item:string; quantity:number; total:number; supplier:string; status:string };
-type AppData = { products:Product[]; sales:Sale[]; purchases:Purchase[]; clients:string[]; suppliers:string[] };
-
-const seed: AppData = {
-  products: [
-    {code:"P05",name:"Difusor Coco",cost:8005,price:12000,stock:3,minimum:10},
-    {code:"P04",name:"Difusor Vainilla",cost:4005,price:9000,stock:-4,minimum:10},
-    {code:"P01",name:"Aromatizador Coco",cost:8050,price:14000,stock:0,minimum:10},
-    {code:"P02",name:"Aromatizador Vainilla",cost:8050,price:14000,stock:-1,minimum:10},
-    {code:"P08",name:"Jabón",cost:0,price:2000,stock:0,minimum:10},
-    {code:"P10",name:"Bombas",cost:0,price:12000,stock:0,minimum:10},
-    {code:"C01",name:"Combo difusor vainilla + aromatizador coco",cost:12055,price:20000,stock:-1,minimum:10},
-    {code:"P03",name:"Spray Lavanda y Tilo",cost:1300,price:3000,stock:5,minimum:10},
-  ],
-  sales: [
-    {id:1,date:"30/06/2026",client:"Seba",code:"P02",product:"Aromatizador Vainilla",quantity:1,total:1,status:"PAGO"},
-    {id:2,date:"30/06/2026",client:"Cristian",code:"P04",product:"Difusor Vainilla",quantity:5,total:15000,status:"PAGO"},
-    {id:3,date:"30/06/2026",client:"Paula",code:"C04",product:"Bonbini",quantity:5,total:20000,status:"PAGO"},
-    {id:4,date:"01/07/2026",client:"Paula",code:"C01",product:"Combo difusor vainilla + aromatizador coco",quantity:1,total:10000,status:"PAGO"},
-    {id:5,date:"12/07/2026",client:"Pedro",code:"P03",product:"Spray Lavanda y Tilo",quantity:3,total:9000,status:"PAGO"},
-  ],
-  purchases: [
-    {id:1,date:"30/06/2026",category:"Envases",code:"EN01",item:"125 ml",quantity:2000,total:10000,supplier:"Planet Fun",status:"Pagado"},
-    {id:2,date:"30/06/2026",category:"Esencias",code:"E01",item:"Vainilla",quantity:2000,total:40000,supplier:"Boca",status:"Pagado"},
-    {id:3,date:"30/06/2026",category:"Esencias",code:"E02",item:"Coco",quantity:1000,total:40000,supplier:"Bunge",status:"Pagado"},
-    {id:4,date:"12/07/2026",category:"Esencias",code:"E03",item:"Lavanda y Tilo",quantity:1000,total:50000,supplier:"Lynch",status:"Pagado"},
-  ],
-  clients:["Seba","Paula","Cristian","Juan","Romi","Mariano","Pedro","María","Juana","Roberto","Guillermina"],
-  suppliers:["Lynch","Bunge","Planet Fun","Vélez","Boca"]
+const descriptions: Record<SectionId, string> = {
+  inicio: "Así está el negocio hoy.", ventas: "Registrá cobros y seguí cada venta sin perder el stock.", pedidos: "Organizá el trabajo pendiente desde que entra hasta que se entrega.", clientes: "Conocé a tus clientes y detectá a quién volver a contactar.", productos: "Precios, costos, recetas y combos en un solo lugar.", fabricacion: "Planificá lotes y consumí materias primas automáticamente.", stock: "Controlá productos terminados y materias primas en tiempo real.", compras: "Registrá abastecimiento, comprobantes y pagos a proveedores.", proveedores: "Contactos, insumos y evolución de precios de cada proveedor.", finanzas: "Entendé cuánto vende y cuánto gana realmente el negocio.", calendario: "Organizá pedidos, entregas, fabricación, compras y cobros del negocio.",
 };
 
-const money = (n:number) => new Intl.NumberFormat("es-AR",{style:"currency",currency:"ARS",maximumFractionDigits:0}).format(n);
-const today = () => new Date().toLocaleDateString("es-AR");
+const quickActions: Array<{ label: string; section: SectionId; kind: string; icon: KhoraIconName }> = [
+  { label: "Nueva venta", section: "ventas", kind: "venta", icon: moduleIcons.ventas }, { label: "Nuevo pedido", section: "pedidos", kind: "pedido", icon: moduleIcons.pedidos }, { label: "Fabricar producto", section: "fabricacion", kind: "fabricación", icon: moduleIcons.fabricacion }, { label: "Nueva compra", section: "compras", kind: "compra", icon: moduleIcons.compras }, { label: "Nuevo gasto", section: "finanzas", kind: "gasto", icon: moduleIcons.finanzas }, { label: "Nuevo cliente", section: "clientes", kind: "cliente", icon: moduleIcons.clientes }, { label: "Nuevo proveedor", section: "proveedores", kind: "proveedor", icon: moduleIcons.proveedores },
+];
 
-export default function Home(){
-  const [data,setData]=useState<AppData>(seed); const [section,setSection]=useState("Resumen");
-  const [search,setSearch]=useState(""); const [modal,setModal]=useState<"sale"|"purchase"|"product"|null>(null);
-  const [notice,setNotice]=useState("");
-  useEffect(()=>{ fetch("/api/data").then(r=>r.ok?r.json():Promise.reject()).then(x=>{if(x.data)setData(x.data)}).catch(()=>{}); },[]);
-  const save=(next:AppData)=>{setData(next);fetch("/api/data",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(next)}).catch(()=>{});setNotice("Movimiento guardado correctamente");setTimeout(()=>setNotice(""),2500)};
-  const metrics=useMemo(()=>({sales:data.sales.reduce((a,v)=>a+v.total,0),cost:data.purchases.reduce((a,v)=>a+v.total,0),low:data.products.filter(p=>p.stock<=p.minimum).length}),[data]);
-  const filtered=data.products.filter(p=>(p.name+p.code).toLowerCase().includes(search.toLowerCase()));
-  const nav=["Resumen","Productos","Ventas","Compras","Contactos"];
-  return <main className="shell">
-    <aside><div className="brand"><span>AC</span><div><b>Alma & Casa</b><small>Gestión del emprendimiento</small></div></div><nav>{nav.map(n=><button className={section===n?"active":""} onClick={()=>setSection(n)} key={n}><i>{({Resumen:"⌂",Productos:"◇",Ventas:"$",Compras:"↓",Contactos:"◎"} as Record<string,string>)[n]}</i>{n}</button>)}</nav><div className="side-note"><b>Todo en orden</b><p>Los datos quedan guardados automáticamente.</p></div></aside>
-    <section className="content"><header><div><p className="eyebrow">DOMINGO, 12 DE JULIO</p><h1>{section}</h1><p>{section==="Resumen"?"Una mirada rápida a tu negocio":`Administrá ${section.toLowerCase()} desde un solo lugar`}</p></div><button className="primary" onClick={()=>setModal(section==="Compras"?"purchase":section==="Productos"?"product":"sale")}>＋ {section==="Compras"?"Nueva compra":section==="Productos"?"Nuevo producto":"Nueva venta"}</button></header>
-      {notice&&<div className="toast">✓ {notice}</div>}
-      {section==="Resumen"&&<><div className="cards"><article><span className="green">VENTAS ACUMULADAS</span><strong>{money(metrics.sales)}</strong><small>{data.sales.length} ventas registradas</small></article><article><span className="terracotta">GASTOS EN INSUMOS</span><strong>{money(metrics.cost)}</strong><small>{data.purchases.length} compras registradas</small></article><article><span className="purple">RESULTADO ESTIMADO</span><strong>{money(metrics.sales-metrics.cost)}</strong><small>Ventas menos compras</small></article><article className="warning"><span>ATENCIÓN DE STOCK</span><strong>{metrics.low}</strong><small>productos necesitan revisión</small></article></div><div className="two"><Panel title="Productos con poco stock" action="Ver productos" onAction={()=>setSection("Productos")}><ProductTable items={data.products.filter(p=>p.stock<=p.minimum).slice(0,5)}/></Panel><Panel title="Últimas ventas"><div className="sales-list">{data.sales.slice(-4).reverse().map(s=><div key={s.id}><span>{s.client.slice(0,1)}</span><p><b>{s.client}</b><small>{s.product} · {s.quantity} u.</small></p><strong>{money(s.total)}</strong></div>)}</div></Panel></div></>}
-      {section==="Productos"&&<><div className="toolbar"><input placeholder="Buscar por nombre o código..." value={search} onChange={e=>setSearch(e.target.value)}/><span>{filtered.length} productos</span></div><Panel title="Catálogo y stock"><ProductTable items={filtered}/></Panel></>}
-      {section==="Ventas"&&<Panel title="Historial de ventas"><table><thead><tr><th>FECHA</th><th>CLIENTE</th><th>PRODUCTO</th><th>CANT.</th><th>ESTADO</th><th>TOTAL</th></tr></thead><tbody>{data.sales.slice().reverse().map(s=><tr key={s.id}><td>{s.date}</td><td><b>{s.client}</b></td><td>{s.product}</td><td>{s.quantity}</td><td><em className="paid">{s.status}</em></td><td><b>{money(s.total)}</b></td></tr>)}</tbody></table></Panel>}
-      {section==="Compras"&&<Panel title="Compras de insumos"><table><thead><tr><th>FECHA</th><th>INSUMO</th><th>CATEGORÍA</th><th>PROVEEDOR</th><th>CANT.</th><th>TOTAL</th></tr></thead><tbody>{data.purchases.slice().reverse().map(p=><tr key={p.id}><td>{p.date}</td><td><b>{p.item}</b><small className="block">{p.code}</small></td><td>{p.category}</td><td>{p.supplier}</td><td>{p.quantity}</td><td><b>{money(p.total)}</b></td></tr>)}</tbody></table></Panel>}
-      {section==="Contactos"&&<div className="two"><Panel title={`Clientes (${data.clients.length})`}><div className="contact-grid">{data.clients.map(c=><div key={c}><span>{c[0]}</span><b>{c}</b></div>)}</div></Panel><Panel title={`Proveedores (${data.suppliers.length})`}><div className="contact-grid">{data.suppliers.map(c=><div key={c}><span>{c[0]}</span><b>{c}</b></div>)}</div></Panel></div>}
-    </section>{modal&&<Modal type={modal} data={data} close={()=>setModal(null)} save={save}/>}</main>
+export default function Home() {
+  const [section, setSection] = useState<SectionId>("inicio");
+  const [mobileNav, setMobileNav] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [globalQuery, setGlobalQuery] = useState("");
+  const [activeSearch, setActiveSearch] = useState("");
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [selectedSearchIndex, setSelectedSearchIndex] = useState(0);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [openNavGroup, setOpenNavGroup] = useState<"contactos" | "produccion" | null>(null);
+  const [createKind, setCreateKind] = useState<string | null>(null);
+  const [notice, setNotice] = useState("");
+  const searchInput = useRef<HTMLInputElement>(null);
+  const primaryNavRef = useRef<HTMLElement>(null);
+  const current = useMemo(() => navigation.find((item) => item.id === section) ?? navigation[0], [section]);
+  const searchResults = useMemo(() => searchKhora(globalQuery), [globalQuery]);
+  const operationalAlerts = useMemo(() => getOperationalOverview().alerts, []);
+
+  useEffect(() => {
+    function onShortcut(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); setSearchOpen(true); searchInput.current?.focus(); }
+      if (event.key === "Escape") { setSearchOpen(false); setQuickOpen(false); setAlertsOpen(false); setOpenNavGroup(null); }
+    }
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
+
+  useEffect(() => {
+    function closeNavGroup(event: PointerEvent) {
+      if (primaryNavRef.current && !primaryNavRef.current.contains(event.target as Node)) setOpenNavGroup(null);
+    }
+    document.addEventListener("pointerdown", closeNavGroup);
+    return () => document.removeEventListener("pointerdown", closeNavGroup);
+  }, []);
+
+  useEffect(() => {
+    const syncSectionWithPath = () => setSection(window.location.pathname === "/calendario" ? "calendario" : "inicio");
+    syncSectionWithPath();
+    window.addEventListener("popstate", syncSectionWithPath);
+    return () => window.removeEventListener("popstate", syncSectionWithPath);
+  }, []);
+
+  function goTo(next: SectionId, query = "") { const targetPath = next === "calendario" ? "/calendario" : "/"; if (window.location.pathname !== targetPath) window.history.pushState({}, "", targetPath); setSection(next); setActiveSearch(query); setGlobalQuery(""); setSearchOpen(false); setMobileNav(false); setQuickOpen(false); setAlertsOpen(false); setOpenNavGroup(null); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  function isPrimaryActive(item: PrimaryNavigationItem) { return item.type === "link" ? section === item.id : item.children.some((child) => child.id === section); }
+  function openSearchResult(result: GlobalSearchResult) { goTo(result.destination.section, result.destination.query); }
+  function openCreate(kind: string, target = section) { setSection(target); setCreateKind(kind); setQuickOpen(false); }
+  function saveDemo(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); setCreateKind(null); setNotice("Listo. El registro se guardó en la demostración."); window.setTimeout(() => setNotice(""), 3200); }
+
+  return <div className="app-shell">
+    <header className="desktop-navbar">
+      <button className="navbar-brand" onClick={() => goTo("inicio")} aria-label="Ir al inicio de KHORA"><span className="brand-mark">K</span><span><strong>KHORA</strong><small>Gestión simple</small></span></button>
+      <nav ref={primaryNavRef} className="horizontal-nav" aria-label="Navegación principal">{primaryNavigation.map((item) => { const active = isPrimaryActive(item); if (item.type === "link") return <button key={item.id} className={active ? "active" : ""} onClick={() => goTo(item.id)} title={item.label}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "pedidos" && <b className="nav-count">4</b>}</button>; const expanded = openNavGroup === item.id; return <div className={`top-nav-group ${active ? "has-active" : ""}`} key={item.id}><button className={active ? "active" : ""} onClick={() => setOpenNavGroup((current) => current === item.id ? null : item.id)} aria-haspopup="menu" aria-expanded={expanded} title={item.label}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span><i className="nav-chevron" aria-hidden="true"><KhoraIcon name="chevron-down" /></i>{item.id === "produccion" && <b className="nav-alert">!</b>}</button>{expanded && <div className="top-nav-menu" role="menu" aria-label={item.label}>{item.children.map((child) => <button key={child.id} role="menuitem" className={section === child.id ? "selected" : ""} onClick={() => goTo(child.id)}><KhoraIcon name={child.icon} /><span>{child.label}</span>{child.id === "stock" && <b className="nav-alert">!</b>}</button>)}</div>}</div>; })}</nav>
+      <div className="navbar-user"><div className="profile-wrap"><button className="navbar-profile" onClick={() => setProfileOpen((value) => !value)} aria-expanded={profileOpen}><span className="avatar">PZ</span><span><strong>Paula</strong><small>Administradora</small></span><i><KhoraIcon name="chevron-down" /></i></button>{profileOpen && <div className="profile-menu"><button><KhoraIcon name={moduleIcons.configuracion} /> Configuración</button><button>◌ Mi perfil</button><button disabled>Cerrar sesión</button></div>}</div></div>
+    </header>
+    <aside className={`sidebar ${mobileNav ? "is-open" : ""}`} aria-label="Navegación principal">
+      <div className="brand-block"><div className="brand-mark" aria-hidden="true">K</div><div><strong>KHORA</strong><span>Gestión simple</span></div><button className="sidebar-close" onClick={() => setMobileNav(false)} aria-label="Cerrar menú">×</button></div>
+      <nav className="side-nav"><span className="nav-caption">GESTIÓN</span>{navigation.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => goTo(item.id)}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "pedidos" && <b className="nav-count">4</b>}{item.id === "stock" && <b className="nav-alert">!</b>}</button>)}</nav>
+      <div className="sidebar-bottom"><div className="profile-mini"><div className="avatar">PZ</div><div><strong>Paula</strong><span>Administradora</span></div><button aria-label="Opciones del perfil">•••</button></div></div>
+    </aside>
+    {mobileNav && <button className="sidebar-scrim" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}
+    <div className="main-column">
+      <header className="topbar"><button className="menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menú">☰</button><label className="global-search"><span aria-hidden="true"><KhoraIcon name="search" /></span><input ref={searchInput} role="combobox" aria-autocomplete="list" value={globalQuery} onFocus={() => setSearchOpen(globalQuery.trim().length >= 2)} onChange={(event) => { setGlobalQuery(event.target.value); setSearchOpen(true); setSelectedSearchIndex(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); setSelectedSearchIndex((value) => Math.min(value + 1, searchResults.length - 1)); } if (event.key === "ArrowUp") { event.preventDefault(); setSelectedSearchIndex((value) => Math.max(value - 1, 0)); } if (event.key === "Enter" && searchResults[selectedSearchIndex]) { event.preventDefault(); openSearchResult(searchResults[selectedSearchIndex]); } }} placeholder="Buscar cliente, pedido, producto o lote…" aria-label="Búsqueda global" aria-expanded={searchOpen && globalQuery.trim().length >= 2} aria-controls="global-search-results" autoComplete="off" /><kbd>⌘ K</kbd></label><div className="topbar-actions"><button className="mobile-alert-button" aria-label="Notificaciones" onClick={() => setAlertsOpen((value) => !value)}><KhoraIcon name={moduleIcons.notificaciones} /><b>{operationalAlerts.length}</b></button><div className="quick-wrap"><button className="new-button" onClick={() => setQuickOpen((value) => !value)} aria-expanded={quickOpen} aria-haspopup="menu"><span>＋</span> Nuevo <i><KhoraIcon name="chevron-down" /></i></button>{quickOpen && <div className="quick-menu" role="menu" aria-label="Crear nuevo registro"><p>CREAR NUEVO</p>{quickActions.map((action) => <button role="menuitem" key={action.kind} onClick={() => openCreate(action.kind, action.section)}><i><KhoraIcon name={action.icon} /></i><span>{action.label}</span></button>)}</div>}</div></div></header>
+      {searchOpen && globalQuery.trim().length >= 2 && <GlobalSearchPalette query={globalQuery} results={searchResults} selectedIndex={selectedSearchIndex} onSelect={openSearchResult} onClose={() => setSearchOpen(false)} />}
+      {alertsOpen && <NotificationCenter alerts={operationalAlerts} onNavigate={(destination) => goTo(destination.section, destination.query)} onClose={() => setAlertsOpen(false)} />}
+      <main className="content"><div className="page-heading"><div><p className="breadcrumb">KHORA <span>/</span> {current.label}</p><h1>{section === "inicio" ? "Buen día, Paula" : current.label}</h1><p>{descriptions[section]}</p></div>{!(["inicio", "ventas", "stock", "compras", "productos", "fabricacion", "finanzas", "calendario"] as SectionId[]).includes(section) && <button className="context-create" onClick={() => openCreate(section.slice(0, -1) || section)}><span>＋</span> {createLabel(section)}</button>}</div>
+        {notice && <div className="toast" role="status"><span>✓</span>{notice}</div>}
+        {activeSearch && <div className="search-notice"><span><KhoraIcon name="search" /></span><div><strong>Mostrando resultados para “{activeSearch}”</strong><p>Filtro aplicado desde la búsqueda global o una acción del centro operativo.</p></div><button onClick={() => setActiveSearch("")}>Limpiar</button></div>}
+        <SectionContent section={section} search={activeSearch} onNavigate={goTo} onCreate={openCreate} />
+      </main>
+    </div>
+    {createKind && <div className="drawer-layer" role="presentation"><button className="drawer-backdrop" onClick={() => setCreateKind(null)} aria-label="Cerrar formulario" /><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title"><div className="drawer-header"><div><p>NUEVO REGISTRO</p><h2 id="drawer-title">{drawerTitle(createKind)}</h2></div><button onClick={() => setCreateKind(null)} aria-label="Cerrar">×</button></div><CreateForm kind={createKind} onSubmit={saveDemo} onCancel={() => setCreateKind(null)} /></aside></div>}
+  </div>;
 }
 
-function Panel({title,children,action,onAction}:{title:string;children:React.ReactNode;action?:string;onAction?:()=>void}){return <article className="panel"><div className="panel-head"><h2>{title}</h2>{action&&<button onClick={onAction}>{action} →</button>}</div>{children}</article>}
-function ProductTable({items}:{items:Product[]}){return <table><thead><tr><th>PRODUCTO</th><th>CÓDIGO</th><th>STOCK</th><th>MÍNIMO</th><th>PRECIO</th><th>ESTADO</th></tr></thead><tbody>{items.map(p=><tr key={p.code}><td><b>{p.name}</b></td><td>{p.code}</td><td><b>{p.stock}</b></td><td>{p.minimum}</td><td>{money(p.price)}</td><td><em className={p.stock<=0?"out":"low"}>{p.stock<=0?"Sin stock":"Poco stock"}</em></td></tr>)}</tbody></table>}
-
-function Modal({type,data,close,save}:{type:"sale"|"purchase"|"product";data:AppData;close:()=>void;save:(d:AppData)=>void}){
-  const submit=(e:React.FormEvent<HTMLFormElement>)=>{e.preventDefault();const f=new FormData(e.currentTarget);
-    if(type==="sale"){const code=String(f.get("code"));const p=data.products.find(x=>x.code===code)!;const q=Number(f.get("quantity"));save({...data,products:data.products.map(x=>x.code===code?{...x,stock:x.stock-q}:x),sales:[...data.sales,{id:Date.now(),date:today(),client:String(f.get("client")),code,product:p.name,quantity:q,total:q*p.price,status:String(f.get("status"))}]});}
-    if(type==="purchase")save({...data,purchases:[...data.purchases,{id:Date.now(),date:today(),category:String(f.get("category")),code:String(f.get("code")),item:String(f.get("item")),quantity:Number(f.get("quantity")),total:Number(f.get("total")),supplier:String(f.get("supplier")),status:"Pagado"}]});
-    if(type==="product")save({...data,products:[...data.products,{code:String(f.get("code")).toUpperCase(),name:String(f.get("item")),cost:Number(f.get("cost")),price:Number(f.get("price")),stock:Number(f.get("quantity")),minimum:Number(f.get("minimum"))}]});close()};
-  return <div className="overlay" onMouseDown={close}><form className="modal" onSubmit={submit} onMouseDown={e=>e.stopPropagation()}><button type="button" className="x" onClick={close}>×</button><p className="eyebrow">NUEVO MOVIMIENTO</p><h2>{type==="sale"?"Registrar venta":type==="purchase"?"Registrar compra":"Agregar producto"}</h2>
-    {type==="sale"?<><label>Cliente<input name="client" list="clients" required/><datalist id="clients">{data.clients.map(c=><option key={c}>{c}</option>)}</datalist></label><label>Producto<select name="code">{data.products.map(p=><option value={p.code} key={p.code}>{p.name} · {money(p.price)}</option>)}</select></label><div className="form-row"><label>Cantidad<input name="quantity" type="number" min="1" defaultValue="1" required/></label><label>Estado<select name="status"><option>PAGO</option><option>PENDIENTE</option></select></label></div></>:<><label>{type==="product"?"Nombre del producto":"Insumo"}<input name="item" required/></label><div className="form-row"><label>Código<input name="code" required/></label><label>{type==="product"?"Stock inicial":"Cantidad"}<input name="quantity" type="number" min="0" required/></label></div>{type==="purchase"?<><label>Categoría<select name="category"><option>Esencias</option><option>Envases</option><option>Varillas</option><option>Alcohol</option><option>Otros</option></select></label><label>Proveedor<select name="supplier">{data.suppliers.map(s=><option key={s}>{s}</option>)}</select></label><label>Total pagado<input name="total" type="number" min="0" required/></label></>:<><div className="form-row"><label>Costo<input name="cost" type="number" min="0" required/></label><label>Precio<input name="price" type="number" min="0" required/></label></div><label>Stock mínimo<input name="minimum" type="number" min="0" defaultValue="10" required/></label></>}</>}
-    <div className="modal-actions"><button type="button" onClick={close}>Cancelar</button><button className="primary">Guardar</button></div></form></div>
+function GlobalSearchPalette({ query, results, selectedIndex, onSelect, onClose }: { query: string; results: GlobalSearchResult[]; selectedIndex: number; onSelect: (result: GlobalSearchResult) => void; onClose: () => void }) {
+  const groups = groupSearchResults(results);
+  return <div className="search-palette-layer"><button className="search-palette-backdrop" onClick={onClose} aria-label="Cerrar búsqueda" /><section className="search-palette" id="global-search-results" role="dialog" aria-modal="true" aria-label="Resultados de búsqueda global"><header><span><KhoraIcon name="search" /></span><div><strong>Resultados para “{query}”</strong><small>{results.length ? `${results.length} coincidencias en KHORA` : "Sin coincidencias"}</small></div><kbd>ESC</kbd></header><div className="search-results" role="listbox">{results.length ? Object.entries(groups).map(([category, items]) => <section key={category}><h2>{category}</h2>{items?.map((result) => { const resultIndex = results.indexOf(result); return <button key={result.id} className={resultIndex === selectedIndex ? "selected" : ""} role="option" aria-selected={resultIndex === selectedIndex} onMouseEnter={() => undefined} onClick={() => onSelect(result)}><i><KhoraIcon name={result.icon} /></i><span><strong>{result.title}</strong><small>{result.subtitle}</small></span><b>↗</b></button>; })}</section>) : <div className="search-empty"><span><KhoraIcon name="search" /></span><strong>No encontramos resultados</strong><p>Probá con un número de pedido, cliente, producto, materia prima, lote o proveedor.</p></div>}</div><footer><span>↑↓ Navegar</span><span>↵ Abrir</span><span>Esc Cerrar</span></footer></section></div>;
 }
+
+function NotificationCenter({ alerts, onNavigate, onClose }: { alerts: ReturnType<typeof getOperationalOverview>["alerts"]; onNavigate: (destination: NavigationIntent) => void; onClose: () => void }) {
+  const groups = [
+    { id: "critical", label: "Crítico", items: alerts.filter((alert) => alert.priority === "critical") },
+    { id: "attention", label: "Atención", items: alerts.filter((alert) => alert.priority === "attention") },
+    { id: "information", label: "Información", items: alerts.filter((alert) => alert.priority === "information") },
+  ];
+  return <div className="notification-layer"><button className="notification-backdrop" onClick={onClose} aria-label="Cerrar alertas" /><aside className="notification-center" role="dialog" aria-modal="true" aria-labelledby="notification-title"><header><div><p>CENTRO DE ALERTAS</p><h2 id="notification-title">Requiere tu atención</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></header><div>{groups.map((group) => group.items.length > 0 && <section key={group.id}><h3><i className={`priority-dot ${group.id}`} />{group.label}<span>{group.items.length}</span></h3>{group.items.map((alert) => <button className="notification-row" key={alert.id} onClick={() => onNavigate(alert.destination)}><i className={`dot ${alert.tone}`} /><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><b>→</b></button>)}</section>)}</div><footer>Las alertas se calculan con los datos actuales y no se duplican.</footer></aside></div>;
+}
+
+function createLabel(section: SectionId) { const labels: Partial<Record<SectionId, string>> = { ventas: "Nueva venta", pedidos: "Nuevo pedido", clientes: "Nuevo cliente", productos: "Nuevo producto", fabricacion: "Nueva fabricación", stock: "Ajustar stock", compras: "Nueva compra", proveedores: "Nuevo proveedor", finanzas: "Nuevo gasto" }; return labels[section] ?? "Nuevo"; }
+function drawerTitle(kind: string) { const value = kind.toLowerCase(); if (value.includes("fabric")) return "Fabricar producto"; if (value.includes("stock")) return "Ajustar stock"; return `Nueva ${value}`.replace("Nueva cliente", "Nuevo cliente").replace("Nueva pedido", "Nuevo pedido").replace("Nueva producto", "Nuevo producto").replace("Nueva proveedor", "Nuevo proveedor"); }
+
+function CreateForm({ kind, onSubmit, onCancel }: { kind: string; onSubmit: (event: React.FormEvent<HTMLFormElement>) => void; onCancel: () => void }) {
+  const k = kind.toLowerCase(), isContact = k.includes("cliente") || k.includes("proveedor"), isMoney = k.includes("venta") || k.includes("compra") || k.includes("gasto") || k.includes("pedido"), isStock = k.includes("fabric") || k.includes("stock") || k.includes("producto");
+  return <form className="drawer-form" onSubmit={onSubmit}><div className="drawer-body"><div className="form-intro"><span>i</span><p>Completá lo esencial. Podés agregar más detalles después desde la ficha.</p></div>
+    {isContact && <><Field label="Nombre o razón social" placeholder="Ej. María López" /><div className="field-row"><Field label="Teléfono / WhatsApp" placeholder="+54 9…" /><Field label="Email" type="email" placeholder="nombre@email.com" /></div><Field label="Dirección" placeholder="Calle, número, localidad" required={false} /></>}
+    {isMoney && <>{k.includes("gasto") ? <Field label="Fecha" type="date" defaultValue="2026-08-13" /> : <div className="field-row"><Field label={k.includes("compra") ? "Proveedor" : "Cliente"} as="select" options={["Seleccionar…", "Mariana López", "Estudio Nativa", "Casa Calma"]} /><Field label="Fecha" type="date" defaultValue="2026-08-13" /></div>}<Field label={k.includes("gasto") ? "Descripción" : "Producto o concepto"} placeholder="Empezá a escribir para buscar…" /><div className="field-row"><Field label="Cantidad" type="number" defaultValue="1" /><Field label="Importe (ARS)" type="number" placeholder="$ 0" /></div><Field label="Estado de pago" as="select" options={["Pagado", "Pendiente", "Parcial"]} /></>}
+    {isStock && <><Field label="Producto o materia prima" as="select" options={["Seleccionar…", "Difusor Lavanda 250 ml", "Home Spray Jazmín", "Alcohol de cereal", "Esencia Lavanda"]} /><div className="field-row"><Field label="Cantidad" type="number" defaultValue="1" /><Field label="Fecha" type="date" defaultValue="2026-08-13" /></div><Field label="Motivo u observación" placeholder="Escribí una referencia clara…" required={false} /></>}
+    {!isContact && !isMoney && !isStock && <Field label="Nombre" placeholder="Nombre del registro" />}<label className="field"><span>Notas internas <small>OPCIONAL</small></span><textarea rows={4} placeholder="Información útil para recordar…" /></label></div><div className="drawer-footer"><button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button><button className="primary-button">Guardar</button></div></form>;
+}
+
+function Field({ label, as = "input", options = [], required = true, ...props }: { label: string; as?: "input" | "select"; options?: string[]; required?: boolean } & React.InputHTMLAttributes<HTMLInputElement>) { return <label className="field"><span>{label}{!required && <small>OPCIONAL</small>}</span>{as === "select" ? <select required={required}>{options.map((option) => <option key={option}>{option}</option>)}</select> : <input required={required} {...props} />}</label>; }

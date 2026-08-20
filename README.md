@@ -1,98 +1,52 @@
-# vinext-starter
+# KHORA
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+Sistema interno de gestión para un emprendimiento de productos aromáticos y decoración.
 
-## Prerequisites
+## Qué incluye
 
-- Node.js `>=22.13.0`
+- Dashboard con ventas, ganancia, alertas, productos destacados y clientes para recuperar.
+- Ventas, pedidos con vista Kanban, clientes y proveedores.
+- Productos, recetas, combos, fabricación por lotes y costos históricos.
+- Stock separado entre productos terminados y materias primas, con movimientos auditables.
+- Compras, gastos, cuentas por cobrar/pagar, ganancias y reportes.
+- Modelo persistente para pagos, envíos, remitos, compras con múltiples ítems y auditoría.
+- Diseño responsive para computadora, tablet y celular.
 
-## Quick Start
+La interfaz utiliza datos ficticios realistas mientras se completa la conexión con las cuentas de producción. La API y el esquema D1 existentes se conservan como entorno local de desarrollo. La migración final a Supabase/PostgreSQL se realizará al crear el proyecto externo.
+
+## Desarrollo local
+
+Requiere Node.js 22.13 o posterior.
 
 ```bash
-npm install
-npm run dev
-npm run build
+pnpm install
+pnpm dev
 ```
 
-This starter does not use `wrangler.jsonc`.
+## Verificación
 
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```bash
+pnpm lint
+pnpm test
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+`pnpm test` compila la aplicación y verifica las áreas principales, el modelo relacional, los flujos auditables y la adaptación responsive.
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
+## Datos y migraciones
 
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
+- Esquema Drizzle: `db/schema.ts`.
+- Migraciones actuales: `drizzle/0001_*.sql` a `drizzle/0015_*.sql`.
+- Acceso actual: binding D1 `DB`, declarado en `.openai/hosting.json`.
+- No se usan `localStorage` ni `sessionStorage` como fuente de verdad.
 
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
+No aplicar migraciones destructivas ni importar información real sin una copia de seguridad y aprobación explícita.
 
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
+## Próxima conexión externa
 
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
+Cuando estén disponibles las sesiones de la cuenta administradora de la dueña:
 
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+1. Crear o vincular el repositorio de GitHub.
+2. Crear el proyecto de Supabase y convertir el esquema SQLite a PostgreSQL.
+3. Configurar autenticación y variables de entorno.
+4. Importar primero datos de prueba y validar reglas de stock/costos.
+5. Desplegar en Vercel.
