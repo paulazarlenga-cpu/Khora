@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { batches, comboDefinitions, customers, expenses, materials, money, months, orders, priceLists, products, purchases, recipeDefinitions, SectionId, suppliers, Tone, topProducts } from "./khora-data";
-import { getOperationalOverview, getOrderTimeline } from "./khora-operations";
+import { batches, comboDefinitions, customers, expenses, materials, money, months, orders, priceLists, products, purchases, recipeDefinitions, SectionId, suppliers, Tone } from "./khora-data";
+import { getOrderTimeline } from "./khora-operations";
 import { analyzeOrder, getComboBreakdown, getProductionPlan, getPurchaseNeeds, type ProductionPlanItem, type PurchaseNeed, type RequirementCheck } from "./khora-planning";
 import { buildWhatsAppLink, buildWhatsAppMessage, getCustomerInsights, getPriceList, getProductMaterialImpacts, getProductProfitability, getRecoveryCustomers, priceForList, recommendedPrice, simulateMaterialIncrease, type CustomerInsight, type WhatsAppTemplate } from "./khora-sales";
 import { compareMonthlyClosures, getAvailableClosures, getCashPanel, getMonthlyClose, type CashPeriod } from "./khora-finance";
@@ -37,40 +37,81 @@ export function SectionContent({ section, search, onNavigate, onCreate }: Props)
 }
 
 function Dashboard({ onNavigate }: { onNavigate: (section: SectionId, query?: string) => void }) {
-  const overview = getOperationalOverview();
-  const criticalAlerts = overview.alerts.filter((alert) => alert.priority === "critical");
-  const actionAlerts = overview.alerts.filter((alert) => alert.priority === "attention");
+  type Row = Record<string, unknown>;
+  type DashboardState = { summary: Row; products: Row[]; materials: Row[]; sales: Row[]; clients: Row[]; orders: Row[]; profits: Row[]; profitability: Row[] };
+  const empty: DashboardState = { summary: {}, products: [], materials: [], sales: [], clients: [], orders: [], profits: [], profitability: [] };
+  const [data, setData] = useState<DashboardState>(empty);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let active = true;
+    const get = async (entity: string) => { const response = await fetch(`/api/khora?entity=${entity}`); if (!response.ok) throw new Error("No se pudieron cargar los datos reales"); return response.json() as Promise<{ rows?: Row[]; [key: string]: unknown }>; };
+    Promise.all([get("summary"), get("products"), get("materials"), get("sales"), get("clients"), get("orders"), get("profits"), get("product_profitability")])
+      .then(([summary, productRows, materialRows, saleRows, clientRows, orderRows, profitRows, profitabilityRows]) => { if (active) setData({ summary, products: productRows.rows ?? [], materials: materialRows.rows ?? [], sales: saleRows.rows ?? [], clients: clientRows.rows ?? [], orders: orderRows.rows ?? [], profits: profitRows.rows ?? [], profitability: profitabilityRows.rows ?? [] }); })
+      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "No se pudieron cargar los datos reales"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+  const number = (value: unknown) => Number(value) || 0;
+  const pesos = (cents: unknown) => money(number(cents) / 100);
+  const pendingOrders = data.orders.filter((row) => !["DELIVERED", "CANCELLED"].includes(String(row.status)));
+  const unpaidSales = data.sales.filter((row) => !["PAID", "CANCELLED"].includes(String(row.payment_status)));
+  const lowProducts = data.products.filter((row) => number(row.current_stock) <= number(row.minimum_stock));
+  const lowMaterials = data.materials.filter((row) => number(row.current_stock) <= number(row.minimum_stock));
+  const latestProfit = data.profits[0] ?? {};
+  const topRealProducts = data.profitability.filter((row) => number(row.units_sold) > 0).slice(0, 5);
+  const maxUnits = Math.max(1, ...topRealProducts.map((row) => number(row.units_sold)));
+  const recoveryClients = data.clients.filter((row) => row.last_purchase && number(row.days_without_buying) >= 30).sort((a, b) => number(b.days_without_buying) - number(a.days_without_buying)).slice(0, 4);
+  const alerts = [
+    ...lowProducts.map((row) => ({ id: `product-${row.id}`, title: `${row.name} con stock bajo`, detail: `Quedan ${number(row.current_stock)} u. · mínimo ${number(row.minimum_stock)}`, section: "stock" as SectionId, tone: "danger" })),
+    ...lowMaterials.map((row) => ({ id: `material-${row.id}`, title: `${row.material} necesita reposición`, detail: `Stock ${number(row.current_stock)} ${String(row.unit ?? "")}. · mínimo ${number(row.minimum_stock)}`, section: "compras" as SectionId, tone: "warning" })),
+    ...unpaidSales.map((row) => ({ id: `sale-${row.id}`, title: `Venta V-${row.id} con cobro pendiente`, detail: `${String(row.client ?? "Consumidor final")} · faltan ${pesos(row.pending_cents)}`, section: "ventas" as SectionId, tone: "warning" })),
+  ];
+  const today = new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
   return <div className="section-stack">
-    <div className="demo-strip"><span>◉</span><div><strong>Vista de demostración</strong><p>Los datos son ficticios y sirven para probar cómo se sentirá el sistema.</p></div><button>Entendido</button></div>
+    {error && <div className="inline-notice error" role="alert"><span>!</span>{error}</div>}
     <section className="operations-center" aria-labelledby="today-title">
-      <header className="operations-header"><div><p>CENTRO DE OPERACIONES</p><h2 id="today-title">Hoy</h2><span>Viernes 14 de agosto · lo importante para avanzar</span></div><div className="operations-status"><i />{criticalAlerts.length ? `${criticalAlerts.length} prioridades críticas` : "Todo al día"}</div></header>
-      <div className="today-agenda">{overview.agenda.map((item) => <button key={item.id} onClick={() => onNavigate(item.destination.section, item.destination.query)}><span className={`agenda-glyph ${item.tone}`}><KhoraIcon name={item.icon} /></span><span><strong>{item.count} {item.label}</strong><small>{item.detail}</small></span><i>→</i></button>)}</div>
+      <header className="operations-header"><div><p>CENTRO DE OPERACIONES</p><h2 id="today-title">Hoy</h2><span>{today} · datos actualizados desde Supabase</span></div><div className="operations-status"><i />{loading ? "Actualizando…" : alerts.length ? `${alerts.length} asuntos para revisar` : "Todo al día"}</div></header>
+      <div className="today-agenda">
+        <button onClick={() => onNavigate("pedidos")}><span className="agenda-glyph warning"><KhoraIcon name={moduleIcons.pedidos} /></span><span><strong>{pendingOrders.length} pedidos pendientes</strong><small>Revisar el tablero de trabajo</small></span><i>→</i></button>
+        <button onClick={() => onNavigate("ventas")}><span className="agenda-glyph success"><KhoraIcon name={moduleIcons.ventas} /></span><span><strong>{data.sales.length} ventas registradas</strong><small>{unpaidSales.length} con cobro pendiente</small></span><i>→</i></button>
+        <button onClick={() => onNavigate("stock")}><span className="agenda-glyph danger"><KhoraIcon name={moduleIcons.stock} /></span><span><strong>{lowProducts.length + lowMaterials.length} stocks para revisar</strong><small>Productos y materias primas</small></span><i>→</i></button>
+        <button onClick={() => onNavigate("compras")}><span className="agenda-glyph info"><KhoraIcon name={moduleIcons.compras} /></span><span><strong>{lowMaterials.length} materias primas por comprar</strong><small>Según el mínimo configurado</small></span><i>→</i></button>
+      </div>
       <div className="priority-columns">
-        <div><h3><i className="priority-dot critical" />Requiere atención</h3>{criticalAlerts.slice(0, 4).map((alert) => <button key={alert.id} onClick={() => onNavigate(alert.destination.section, alert.destination.query)}><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><i>→</i></button>)}</div>
-        <div><h3><i className="priority-dot attention" />Para hoy</h3>{actionAlerts.slice(0, 4).map((alert) => <button key={alert.id} onClick={() => onNavigate(alert.destination.section, alert.destination.query)}><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><i>→</i></button>)}{actionAlerts.length === 0 && <p className="empty-operation">✓ No hay gestiones urgentes pendientes.</p>}</div>
+        <div><h3><i className="priority-dot critical" />Requiere atención</h3>{alerts.filter((alert) => alert.tone === "danger").slice(0, 4).map((alert) => <button key={alert.id} onClick={() => onNavigate(alert.section)}><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><i>→</i></button>)}{!alerts.some((alert) => alert.tone === "danger") && <p className="empty-operation">✓ No hay faltantes críticos.</p>}</div>
+        <div><h3><i className="priority-dot attention" />Para revisar</h3>{alerts.filter((alert) => alert.tone !== "danger").slice(0, 4).map((alert) => <button key={alert.id} onClick={() => onNavigate(alert.section)}><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><i>→</i></button>)}{!alerts.some((alert) => alert.tone !== "danger") && <p className="empty-operation">✓ No hay gestiones pendientes.</p>}</div>
       </div>
     </section>
     <div className="metric-grid">
-      <Metric label="Pedidos pendientes" value="4" detail="1 requiere atención" tone="warning" icon={moduleIcons.pedidos} onClick={() => onNavigate("pedidos")} />
-      <Metric label="Ventas del mes" value={money(1450000)} detail="↑ 13,3% vs. julio" tone="success" icon={moduleIcons.ventas} />
-      <Metric label="Ganancia neta" value={money(655000)} detail="45,2% de las ventas" tone="success" icon={moduleIcons.finanzas} />
-      <Metric label="Productos bajos" value="3" detail="1 producto crítico" tone="danger" icon={moduleIcons.productos} onClick={() => onNavigate("stock")} />
-      <Metric label="Materias primas bajas" value="3" detail="Reponer esta semana" tone="warning" icon={moduleIcons.stock} onClick={() => onNavigate("stock")} />
+      <Metric label="Pedidos pendientes" value={String(pendingOrders.length)} detail={`${data.orders.length} pedidos registrados`} tone="warning" icon={moduleIcons.pedidos} onClick={() => onNavigate("pedidos")} />
+      <Metric label="Ventas registradas" value={pesos(data.summary.sales)} detail={`${data.sales.length} operaciones reales`} tone="success" icon={moduleIcons.ventas} />
+      <Metric label="Ganancia neta" value={pesos(latestProfit.profit_cents)} detail={latestProfit.month ? `Cierre ${String(latestProfit.month)}` : "Sin cierre calculado"} tone="success" icon={moduleIcons.finanzas} />
+      <Metric label="Productos bajos" value={String(number(data.summary.lowProducts))} detail="Según stock mínimo" tone="danger" icon={moduleIcons.productos} onClick={() => onNavigate("stock")} />
+      <Metric label="Materias primas bajas" value={String(number(data.summary.lowMaterials))} detail="Requieren reposición" tone="warning" icon={moduleIcons.stock} onClick={() => onNavigate("stock")} />
     </div>
     <div className="dashboard-grid dashboard-main">
-      <Panel className="chart-panel" title="Ventas y ganancias" subtitle="Últimos 6 meses" action={<button className="period-button">6 meses⌄</button>}>
-        <MonthlyChart />
+      <Panel className="chart-panel" title="Ventas y ganancias" subtitle="Cierres disponibles en Supabase" action={<button className="period-button">Histórico⌄</button>}>
+        <DashboardMonthlyChart rows={data.profits} />
       </Panel>
-      <Panel title="Centro de alertas" subtitle="Priorizadas y sin duplicados" action={<span className="alert-total">{overview.alerts.length} activas</span>}>
-        <div className="alert-list">{overview.alerts.slice(0, 6).map((alert) => <article className="alert-row" key={alert.id}><i className={`dot ${alert.tone}`} /><div><span className={`priority-label ${alert.priority}`}>{alert.priority === "critical" ? "CRÍTICO" : alert.priority === "attention" ? "ATENCIÓN" : "INFORMACIÓN"}</span><strong>{alert.title}</strong><p>{alert.detail}</p><button onClick={() => onNavigate(alert.destination.section, alert.destination.query)}>{alert.action} →</button></div></article>)}</div>
+      <Panel title="Centro de alertas" subtitle="Calculadas con los datos actuales" action={<span className="alert-total">{alerts.length} activas</span>}>
+        <div className="alert-list">{alerts.slice(0, 6).map((alert) => <article className="alert-row" key={alert.id}><i className={`dot ${alert.tone}`} /><div><span className={`priority-label ${alert.tone === "danger" ? "critical" : "attention"}`}>{alert.tone === "danger" ? "CRÍTICO" : "ATENCIÓN"}</span><strong>{alert.title}</strong><p>{alert.detail}</p><button onClick={() => onNavigate(alert.section)}>Revisar →</button></div></article>)}{!alerts.length && <p className="empty-operation">✓ No hay alertas activas.</p>}</div>
       </Panel>
     </div>
     <div className="dashboard-grid dashboard-bottom">
-      <Panel title="Productos más vendidos" subtitle="Agosto 2026" action={<button className="text-button" onClick={() => onNavigate("productos")}>Ver productos →</button>}><div className="ranking">{topProducts.map((product, index) => <div className="rank-row" key={product.name}><b>{index + 1}</b><div><span>{product.name}</span><i><em style={{ width: `${product.share}%` }} /></i></div><div><strong>{product.units} u.</strong><span>{money(product.revenue)}</span></div></div>)}</div></Panel>
-      <Panel title="Clientes para recuperar" subtitle="Sin compras recientes" action={<button className="text-button" onClick={() => onNavigate("clientes")}>Ver clientes →</button>}><div className="recovery-list">{customers.filter((customer) => customer.tone !== "success").concat(customers.slice(1, 2)).map((customer) => <article key={`${customer.id}-${customer.activity}`}><Avatar text={customer.initials} /><div><strong>{customer.name}</strong><p>{customer.last} · {customer.orders} compras</p></div><Badge tone={customer.tone}>{customer.activity}</Badge></article>)}</div></Panel>
-      <Panel title="Pedidos próximos" subtitle="Ordenados por fecha prevista" action={<button className="text-button" onClick={() => onNavigate("pedidos")}>Ver tablero →</button>}><div className="mini-orders">{orders.slice(0, 4).map((order) => <article key={order.id}><div><strong>{order.id}</strong><span>{order.customer}</span></div><div><Badge tone={order.tone}>{order.status}</Badge><small>{order.due}</small></div></article>)}</div></Panel>
+      <Panel title="Productos más vendidos" subtitle="Historial real de ventas" action={<button className="text-button" onClick={() => onNavigate("productos")}>Ver productos →</button>}><div className="ranking">{topRealProducts.map((product, index) => <div className="rank-row" key={String(product.id)}><b>{index + 1}</b><div><span>{String(product.name)}</span><i><em style={{ width: `${(number(product.units_sold) / maxUnits) * 100}%` }} /></i></div><div><strong>{number(product.units_sold)} u.</strong><span>{pesos(product.accumulated_sales_cents)}</span></div></div>)}{!topRealProducts.length && <p className="empty-operation">Todavía no hay productos vendidos.</p>}</div></Panel>
+      <Panel title="Clientes para recuperar" subtitle="30 días o más sin comprar" action={<button className="text-button" onClick={() => onNavigate("clientes")}>Ver clientes →</button>}><div className="recovery-list">{recoveryClients.map((client) => <article key={String(client.id)}><Avatar text={String(client.name).split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()} /><div><strong>{String(client.name)}</strong><p>Última compra: {String(client.last_purchase).slice(0, 10)} · {number(client.sales_count)} compras</p></div><Badge tone="warning">{number(client.days_without_buying)} días</Badge></article>)}{!recoveryClients.length && <p className="empty-operation">No hay clientes para recuperar.</p>}</div></Panel>
+      <Panel title="Pedidos próximos" subtitle="Ordenados por fecha prevista" action={<button className="text-button" onClick={() => onNavigate("pedidos")}>Ver tablero →</button>}><div className="mini-orders">{pendingOrders.slice(0, 4).map((order) => <article key={String(order.id)}><div><strong>{String(order.number)}</strong><span>{String(order.client ?? "Sin cliente")}</span></div><div><Badge tone="warning">{String(order.status)}</Badge><small>{order.expected_at ? String(order.expected_at).slice(0, 10) : "Sin fecha"}</small></div></article>)}{!pendingOrders.length && <p className="empty-operation">No hay pedidos pendientes.</p>}</div></Panel>
     </div>
   </div>;
+}
+
+function DashboardMonthlyChart({ rows }: { rows: Array<Record<string, unknown>> }) {
+  const data = rows.slice(0, 6).reverse();
+  if (!data.length) return <p className="empty-operation">Todavía no hay cierres mensuales para graficar.</p>;
+  const value = (item: unknown) => Number(item) || 0;
+  const maximum = Math.max(1, ...data.map((row) => value(row.sales_cents)));
+  return <div className="chart"><div className="chart-y"><span>{money(maximum / 100)}</span><span>{money(maximum / 200)}</span><span>$0</span></div><div className="chart-area">{data.map((row) => <div className="chart-month" key={String(row.month)}><div className="bar-group"><i className="sales-bar" style={{ height: `${(value(row.sales_cents) / maximum) * 100}%` }} title={`Ventas ${money(value(row.sales_cents) / 100)}`} /><i className="profit-bar" style={{ height: `${Math.max(0, value(row.profit_cents)) / maximum * 100}%` }} title={`Ganancia ${money(value(row.profit_cents) / 100)}`} /></div><span>{String(row.month).slice(5, 7)}/{String(row.month).slice(2, 4)}</span></div>)}</div><div className="chart-legend"><span><i className="sales" />Ventas</span><span><i className="profit" />Ganancia</span></div></div>;
 }
 
 function Sales({ search }: { search: string }) {
