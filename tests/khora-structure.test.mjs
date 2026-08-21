@@ -90,7 +90,7 @@ test("la Fase 1 reutiliza los datos existentes para agenda, alertas, búsqueda y
   assert.match(page, /NotificationCenter/);
   assert.match(page, /event\.metaKey \|\| event\.ctrlKey/);
   assert.match(sections, /operations-center/);
-  assert.match(sections, /order-timeline/);
+  assert.match(sections, /set_order_status/);
   assert.match(data, /history:/);
 });
 
@@ -115,7 +115,7 @@ test("la Fase 2 centraliza preparación, fabricación, combos y compras", async 
   }
   assert.match(planning, /Math\.max\(required - product\.stock, 0\)/);
   assert.match(planning, /minimum \+ requiredForPlan - material\.stock/);
-  assert.match(sections, /Preparar pedido/);
+  assert.match(sections, /Confirmar fabricación/);
   assert.match(sections, /Planificador/);
   assert.match(sections, /Necesidades de compra/);
   assert.match(sections, /Ver trazabilidad/);
@@ -149,7 +149,7 @@ test("la Fase 3 centraliza clientes, recuperación, rentabilidad y simulaciones"
     assert.match(salesService, new RegExp(`export function ${service}\\b`));
   }
   assert.match(salesService, /cost \/ \(1 - safeMargin \/ 100\)/);
-  assert.match(sections, /FICHA INTELIGENTE/);
+  assert.match(sections, /FICHA DEL CLIENTE/);
   assert.match(sections, /Para recuperar/);
   assert.match(sections, /WhatsAppComposer/);
   assert.match(sections, /RENTABILIDAD REAL/);
