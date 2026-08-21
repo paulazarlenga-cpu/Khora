@@ -7,15 +7,17 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
-    "build": "vinext build",
-    "start": "vinext start",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
     "check:db": "node scripts/check-supabase.mjs",
-    "test": "vinext build && node --test tests/khora-structure.test.mjs",
+    "test": "next build && node --test tests/khora-structure.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work/site-package-stage/dist",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.12.4",
+    "@supabase/supabase-js": "^2.112.3",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "postgres": "3.4.7",

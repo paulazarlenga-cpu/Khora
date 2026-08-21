@@ -252,6 +252,17 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 @keyframes khora-dialog-in{from{opacity:0;transform:translate(-50%,-48%) scale(.985)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 @keyframes khora-toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
+.login-page{min-height:100vh;display:grid;place-items:center;padding:28px;background:radial-gradient(circle at 20% 10%,rgba(211,151,121,.16),transparent 34%),linear-gradient(145deg,#f7f4ed,#edf3ef)}
+.login-card{width:min(100%,440px);background:#fffdfa;border:1px solid rgba(42,82,68,.14);border-radius:22px;padding:34px;box-shadow:0 28px 70px rgba(18,48,39,.16)}
+.login-brand{display:flex;align-items:center;gap:12px;color:var(--forest);padding-bottom:26px;border-bottom:1px solid var(--line)}
+.login-brand>span{width:44px;height:44px;border:1px solid rgba(21,77,60,.35);border-radius:50%;display:grid;place-items:center;font:25px Georgia,serif}
+.login-brand div{display:grid}.login-brand strong{font:20px Georgia,serif;letter-spacing:2px}.login-brand small{font-size:10px;color:#778a82;margin-top:3px}
+.login-copy{padding:28px 0 24px}.login-copy p{margin:0 0 9px;color:#789087;font-size:10px;font-weight:700;letter-spacing:1.7px}.login-copy h1{margin:0;color:#1c352d;font:31px Georgia,serif}.login-copy span{display:block;margin-top:9px;color:#6d7d76;font-size:13px;line-height:1.5}
+.login-form{display:grid;gap:16px}.login-form label{display:grid;gap:7px}.login-form label>span{font-size:12px;font-weight:700;color:#425a51}
+.login-form input{height:48px;border:1px solid #d6dfda;border-radius:10px;background:#fff;padding:0 14px;color:#233b32;font-size:14px;outline:0}.login-form input:focus{border-color:#53816f;box-shadow:0 0 0 3px rgba(83,129,111,.12)}
+.login-form button{height:48px;border:0;border-radius:10px;background:var(--terracotta);color:#fff;font-size:14px;font-weight:750;cursor:pointer;box-shadow:0 8px 18px rgba(194,99,71,.2)}.login-form button:hover{filter:brightness(.97);transform:translateY(-1px)}
+.login-error{border:1px solid rgba(176,72,59,.22);border-radius:9px;background:#fff1ed;color:#994437;padding:11px 13px;font-size:12px}.login-card footer{margin-top:25px;padding-top:18px;border-top:1px solid var(--line);color:#8a9892;font-size:10px;text-align:center}
+
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .horizontal-nav button,.side-nav button,.settings-button,.new-button,.context-create,.primary-button,.secondary-button,.period-button,.icon-button,.more-button,.metric-card,.order-card,.product-card,.supplier-card,.calendar-business-event,.drawer-layer>aside,.confirm-dialog,.quick-menu,.profile-menu,.toast{transform:none!important}

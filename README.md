@@ -12,7 +12,7 @@ Sistema interno de gestión para un emprendimiento de productos aromáticos y de
 - Modelo persistente para pagos, envíos, remitos, compras con múltiples ítems y auditoría.
 - Diseño responsive para computadora, tablet y celular.
 
-La interfaz conserva datos ficticios realistas en las secciones que todavía no tienen carga productiva. La API ya utiliza PostgreSQL mediante el Transaction pooler de Supabase.
+La interfaz conserva datos ficticios realistas en las secciones que todavía no tienen carga productiva. La API utiliza PostgreSQL mediante el Transaction pooler de Supabase y el acceso está protegido con Supabase Auth.
 
 ## Desarrollo local
 
@@ -24,7 +24,13 @@ Copy-Item .env.example .env.local
 pnpm dev
 ```
 
-Completá `DATABASE_URL` en `.env.local` con la conexión privada de Supabase. El archivo local está excluido de Git.
+Completá en `.env.local`:
+
+- `DATABASE_URL`, con la conexión privada del Transaction pooler de Supabase.
+- `NEXT_PUBLIC_SUPABASE_URL` y `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, desde Connect > Framework > Next.js.
+- `KHORA_ALLOWED_EMAIL`, con el único correo administrador autorizado.
+
+El archivo local está excluido de Git y nunca debe subirse al repositorio.
 
 ## Verificación
 
@@ -42,13 +48,15 @@ pnpm check:db
 - Migración consolidada de producción: `supabase/migrations/202608200001_khora_initial.sql`.
 - Acceso de producción: PostgreSQL de Supabase mediante `DATABASE_URL` y consultas preparadas desactivadas para compatibilidad con el Transaction pooler.
 - Las 39 tablas públicas tienen Row Level Security habilitado y no exponen políticas anónimas.
+- Supabase Auth mantiene la sesión en cookies y protege tanto las pantallas como `/api/khora`.
+- No existe registro público: las cuentas se administran desde Supabase y se valida el correo permitido.
 - No se usan `localStorage` ni `sessionStorage` como fuente de verdad.
 
 No aplicar migraciones destructivas ni importar información real sin una copia de seguridad y aprobación explícita.
 
 ## Próximos pasos de producción
 
-1. Configurar Supabase Auth y Storage.
+1. Crear buckets privados y políticas de Supabase Storage.
 2. Retirar los datos ficticios restantes o reemplazarlos por carga real.
 3. Configurar `DATABASE_URL` en Vercel.
 4. Importar datos, validar stock/costos y desplegar.
