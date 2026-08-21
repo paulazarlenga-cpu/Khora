@@ -324,8 +324,8 @@ test("la Fase C crea producto y receta por IDs sin mover inventario", async () =
   assert.match(route, /new Set\(materialIds\)\.size!==materialIds\.length/);
   assert.match(route, /INSERT INTO recipe_items\(recipe_id,material_id,quantity_per_yield\)/);
   assert.match(route, /INSERT INTO products\(code_base_id,type,sale_price_cents,estimated_cost_cents,current_stock,minimum_stock,profit_percentage\)/);
-  assert.match(route, /'MANUFACTURED',\?,\?,0,\?,\?/);
-  const productAction = route.match(/if\(action==="save_product_with_recipe"\)[\s\S]*?(?=\n if\(action==="save_product")/)?.[0] ?? "";
+  assert.match(route, /hasRecipe\?"MANUFACTURED":"SIMPLE"/);
+  const productAction = route.match(/if\(action==="save_product_with_recipe"\)[\s\S]*?(?=\n  if\(action==="update_product_definition")/)?.[0] ?? "";
   assert.doesNotMatch(productAction, /stock_movements|manufacturing_batches|UPDATE raw_materials SET current_stock/);
   assert.match(sections, /Seleccioná los insumos guardados y cuánto necesitás para fabricar UNA unidad/);
   assert.match(sections, /Cantidad necesaria por unidad/);
@@ -439,7 +439,7 @@ test("el alta unificada selecciona insumos guardados, cantidades, unidades y có
   assert.match(sections, /type="text" inputMode="decimal"/);
   assert.match(sections, /items: hasRecipe \? items\.map/);
   assert.match(sections, /Agregá al menos una materia prima a la receta\./);
-  assert.match(sections, /action: "save_product_with_recipe", name/);
+  assert.match(sections, /action: product \? "update_product_definition" : "save_product_with_recipe"/);
   assert.match(sections, /action: "save_combo", name/);
   assert.match(sections, /Productos del combo/);
   assert.match(sections, /comboItems/);
@@ -683,4 +683,22 @@ test("los combos aceptan productos y materias primas directas", async () => {
   assert.match(sections, /materialItems: materialItems\.map/);
   assert.match(route, /INSERT INTO combo_material_items/);
   assert.match(route, /Agregá al menos un producto o insumo al combo/);
+});
+
+test("productos y combos se editan o archivan sin alterar el historial", async () => {
+  const [route, sections] = await Promise.all([read("app/api/khora/route.ts"), read("app/khora-sections.tsx")]);
+  assert.match(route, /entity==="product_definition"/);
+  assert.match(route, /entity==="combo_definition"/);
+  assert.match(route, /action==="update_product_definition"/);
+  assert.match(route, /action==="update_combo_definition"/);
+  assert.match(route, /action==="archive_product_definition"\|\|action==="archive_combo_definition"/);
+  assert.match(route, /currentStockPreserved/);
+  assert.match(route, /historyPreserved:true/);
+  assert.match(route, /producto participa en pedidos abiertos/);
+  assert.match(route, /producto integra un combo activo/);
+  assert.match(sections, /Editar producto/);
+  assert.match(sections, /Editar combo/);
+  assert.match(sections, /Código estable · no se modifica/);
+  assert.match(sections, /function DefinitionArchiveDialog/);
+  assert.match(sections, /Se conservarán el código, el stock actual, los lotes, las ventas y todos los costos históricos/);
 });
