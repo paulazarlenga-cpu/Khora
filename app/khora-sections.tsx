@@ -415,8 +415,8 @@ function Products({ search, onCreateMaterial }: { search: string; onCreateMateri
 type RecipeDraftItem = { materialId: number; quantity: string };
 
 function ProductFormDialog({ onCancel, onSaved, onCreateMaterial }: { onCancel: () => void; onSaved: (message: string) => void; onCreateMaterial: () => void }) {
-  const [catalog, setCatalog] = useState<MaterialRecord[]>(() => demoMaterials.map((material) => ({ ...material, cost: material.cost * 100 })));
-  const [code, setCode] = useState(() => nextSequentialCode(products.filter((item) => item.category !== "Combos").map((item) => item.code), "PRODUCT"));
+  const [catalog, setCatalog] = useState<MaterialRecord[]>([]);
+  const [code, setCode] = useState(() => nextSequentialCode([], "PRODUCT"));
   const [name, setName] = useState("");
   const [pricePesos, setPricePesos] = useState(0);
   const [minimum, setMinimum] = useState(0);
@@ -500,7 +500,7 @@ function ProductFormDialog({ onCancel, onSaved, onCreateMaterial }: { onCancel: 
 }
 
 function ComboFormDialog({ onCancel, onSaved }: { onCancel: () => void; onSaved: (message: string) => void }) {
-  const [code, setCode] = useState(() => nextSequentialCode(products.filter((item) => item.category === "Combos").map((item) => item.code), "COMBO"));
+  const [code, setCode] = useState(() => nextSequentialCode([], "COMBO"));
   const [name, setName] = useState("");
   const [pricePesos, setPricePesos] = useState(0);
   const [minimum, setMinimum] = useState(0);
@@ -516,7 +516,7 @@ function ComboFormDialog({ onCancel, onSaved }: { onCancel: () => void; onSaved:
   const estimatedMargin = salePriceCents > 0 ? (estimatedProfitCents / salePriceCents) * 100 : 0;
 
   useEffect(() => { let active = true; fetch("/api/khora?entity=next_code&kind=COMBO").then((response) => response.ok ? response.json() as Promise<{ code?: string }> : Promise.reject()).then((data) => { if (active && data.code) setCode(data.code); }).catch(() => undefined); return () => { active = false; }; }, []);
-  useEffect(() => { let active = true; fetch("/api/khora?entity=lookups").then((response) => response.ok ? response.json() as Promise<{ products?: Array<Record<string, unknown>> }> : Promise.reject()).then((data) => { if (!active || !data.products?.length) return; setComboCatalog(data.products.filter((row) => String(row.type) !== "COMBO").map((row) => { const lastCost = Number(row.last_batch_unit_cost_cents ?? 0); return { id: Number(row.id), code: String(row.code), name: String(row.name), costCents: lastCost > 0 ? lastCost : Number(row.estimated_cost_cents ?? 0) }; })); }).catch(() => undefined); return () => { active = false; }; }, []);
+  useEffect(() => { let active = true; fetch("/api/khora?entity=lookups").then((response) => response.ok ? response.json() as Promise<{ products?: Array<Record<string, unknown>> }> : Promise.reject()).then((data) => { if (!active) return; setComboCatalog((data.products ?? []).filter((row) => String(row.type) !== "COMBO").map((row) => { const lastCost = Number(row.last_batch_unit_cost_cents ?? 0); return { id: Number(row.id), code: String(row.code), name: String(row.name), costCents: lastCost > 0 ? lastCost : Number(row.estimated_cost_cents ?? 0) }; })); }).catch(() => undefined); return () => { active = false; }; }, []);
 
   function addComboItem() { const available = comboCatalog.find((product) => !comboItems.some((item) => item.productId === product.id)); if (!available) { setError("No quedan productos guardados disponibles para agregar."); return; } setComboItems((current) => [...current, { productId: available.id, quantity: "1" }]); setError(""); }
   function updateComboItem(index: number, changes: Partial<{ productId: number; quantity: string }>) { setComboItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...changes } : item)); }
@@ -700,17 +700,13 @@ type InventoryCategory = { id: number; name: string; prefix: string; kind: "MATE
 type InventorySupplier = { id: number; name: string };
 type MovementRow = { id: number; created_at: string; item: string; movement: string; quantity_delta: number; balance_after: number; unit_cost_cents: number; notes?: string } & Record<string, unknown>;
 
-const demoCategories: InventoryCategory[] = Array.from(new Set(materials.map((item) => item.category))).map((name, index) => ({ id: index + 1, name, prefix: categoryPrefix(name), kind: "MATERIAL", active: true }));
-const demoSuppliers: InventorySupplier[] = suppliers.map((item, index) => ({ id: index + 1, name: item.name }));
-const demoMaterials: MaterialRecord[] = materials.map((item, index) => ({ id: index + 1, code: item.code, name: item.name, category: item.category, categoryId: demoCategories.find((category) => category.name === item.category)?.id ?? 0, prefix: demoCategories.find((category) => category.name === item.category)?.prefix ?? "MAT", unit: item.unit, stock: item.stock, minimum: item.minimum, cost: item.cost, supplier: item.supplier, supplierId: demoSuppliers.find((supplier) => supplier.name === item.supplier)?.id }));
-
 function Stock({ search }: { search: string }) {
   const productData = useKhoraRows<ProductRow>("products");
   const movementData = useKhoraRows<MovementRow>("movements");
   const [tab, setTab] = useState("Productos terminados");
-  const [materialRows, setMaterialRows] = useState<MaterialRecord[]>(demoMaterials);
-  const [categoryRows, setCategoryRows] = useState<InventoryCategory[]>(demoCategories);
-  const [supplierRows, setSupplierRows] = useState<InventorySupplier[]>(demoSuppliers);
+  const [materialRows, setMaterialRows] = useState<MaterialRecord[]>([]);
+  const [categoryRows, setCategoryRows] = useState<InventoryCategory[]>([]);
+  const [supplierRows, setSupplierRows] = useState<InventorySupplier[]>([]);
   const [showMaterialForm, setShowMaterialForm] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [selectedMaterial, setSelectedMaterial] = useState<MaterialRecord | null>(null);
@@ -729,9 +725,9 @@ function Stock({ search }: { search: string }) {
       const apiCategories = (categoryData.rows ?? []).filter((row) => row.kind === "MATERIAL").map((row) => ({ id: Number(row.id), name: String(row.name), prefix: String(row.prefix ?? categoryPrefix(String(row.name))), kind: "MATERIAL" as const, active: Boolean(row.active) }));
       const apiSuppliers = (supplierData.rows ?? []).filter((row) => Boolean(row.active)).map((row) => ({ id: Number(row.id), name: String(row.name) }));
       const apiMaterials = (materialData.rows ?? []).filter((row) => Boolean(row.active)).map((row) => ({ id: Number(row.id), code: String(row.code), name: String(row.material), category: String(row.category ?? "Sin categoría"), categoryId: Number(row.category_id), prefix: String(row.prefix ?? "MAT"), unit: String(row.unit), stock: Number(row.current_stock), minimum: Number(row.minimum_stock), cost: Number(row.current_cost_cents), supplier: String(row.preferred_supplier ?? "Sin proveedor"), supplierId: row.preferred_supplier_id ? Number(row.preferred_supplier_id) : undefined, notes: String(row.notes ?? "") }));
-      if (apiCategories.length) setCategoryRows(apiCategories);
-      if (apiSuppliers.length) setSupplierRows(apiSuppliers);
-      if (apiMaterials.length) setMaterialRows(apiMaterials);
+      setCategoryRows(apiCategories);
+      setSupplierRows(apiSuppliers);
+      setMaterialRows(apiMaterials);
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -880,12 +876,12 @@ function LegacyPurchases({ search, onCreate }: { search: string; onCreate?: (kin
 }
 
 function PurchaseFormDialog({ onCancel, onSaved }: { onCancel: () => void; onSaved: (message: string) => void }) {
-  const [catalog, setCatalog] = useState<MaterialRecord[]>(demoMaterials);
-  const [supplierCatalog, setSupplierCatalog] = useState<InventorySupplier[]>(demoSuppliers);
-  const [materialId, setMaterialId] = useState(demoMaterials[0]?.id ?? 0);
+  const [catalog, setCatalog] = useState<MaterialRecord[]>([]);
+  const [supplierCatalog, setSupplierCatalog] = useState<InventorySupplier[]>([]);
+  const [materialId, setMaterialId] = useState(0);
   const [supplierId, setSupplierId] = useState<number | undefined>();
   const [quantity, setQuantity] = useState(1);
-  const [unit, setUnit] = useState(demoMaterials[0]?.unit ?? "unidad");
+  const [unit, setUnit] = useState("unidad");
   const [totalPesos, setTotalPesos] = useState(0);
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [paymentStatus, setPaymentStatus] = useState("PAID");
@@ -904,8 +900,10 @@ function PurchaseFormDialog({ onCancel, onSaved }: { onCancel: () => void; onSav
       if (!active) return;
       const apiMaterials = (materialData.rows ?? []).filter((row) => Boolean(row.active)).map((row) => ({ id: Number(row.id), code: String(row.code), name: String(row.material), category: String(row.category ?? "Sin categoría"), categoryId: Number(row.category_id), prefix: String(row.prefix ?? "MAT"), unit: String(row.unit), stock: Number(row.current_stock), minimum: Number(row.minimum_stock), cost: Number(row.current_cost_cents), supplier: String(row.preferred_supplier ?? "Sin proveedor"), supplierId: row.preferred_supplier_id ? Number(row.preferred_supplier_id) : undefined, notes: String(row.notes ?? "") }));
       const apiSuppliers = (supplierData.rows ?? []).filter((row) => Boolean(row.active)).map((row) => ({ id: Number(row.id), name: String(row.name) }));
-      if (apiMaterials.length) { setCatalog(apiMaterials); setMaterialId(apiMaterials[0].id); setUnit(apiMaterials[0].unit); }
-      if (apiSuppliers.length) setSupplierCatalog(apiSuppliers);
+      setCatalog(apiMaterials);
+      setSupplierCatalog(apiSuppliers);
+      setMaterialId(apiMaterials[0]?.id ?? 0);
+      setUnit(apiMaterials[0]?.unit ?? "unidad");
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);

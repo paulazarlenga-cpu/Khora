@@ -45,6 +45,7 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/backups/
 
 # KHORA: bases locales y fuentes privadas de migración
 /.tmp-phase-a-d1/

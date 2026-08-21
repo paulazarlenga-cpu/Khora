@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navigation, primaryNavigation, SectionId, type PrimaryNavigationItem } from "./khora-data";
-import { getOperationalOverview, groupSearchResults, searchKhora, type GlobalSearchResult, type NavigationIntent } from "./khora-operations";
+import { emptyOperationalData, getOperationalOverview, groupSearchResults, searchKhora, type GlobalSearchResult, type NavigationIntent, type OperationalData } from "./khora-operations";
 import { SectionContent } from "./khora-sections";
 import { KhoraIcon, moduleIcons, type KhoraIconName } from "./khora-icons";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
@@ -29,11 +29,30 @@ export default function Home() {
   const [createKind, setCreateKind] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [recordRevision, setRecordRevision] = useState(0);
+  const [operationalData, setOperationalData] = useState<OperationalData>(emptyOperationalData);
   const searchInput = useRef<HTMLInputElement>(null);
   const primaryNavRef = useRef<HTMLElement>(null);
   const current = useMemo(() => navigation.find((item) => item.id === section) ?? navigation[0], [section]);
-  const searchResults = useMemo(() => searchKhora(globalQuery), [globalQuery]);
-  const operationalAlerts = useMemo(() => getOperationalOverview().alerts, []);
+  const searchResults = useMemo(() => searchKhora(globalQuery, operationalData), [globalQuery, operationalData]);
+  const operationalOverview = useMemo(() => getOperationalOverview(operationalData), [operationalData]);
+  const operationalAlerts = operationalOverview.alerts;
+  const pendingOrderCount = operationalOverview.agenda.find((item) => item.id === "prepare")?.count ?? 0;
+  const lowMaterialCount = operationalOverview.agenda.find((item) => item.id === "buy")?.count ?? 0;
+  const productionAttention = operationalOverview.agenda.some((item) => ["manufacture", "buy"].includes(item.id) && item.count > 0);
+
+  useEffect(() => {
+    let active = true;
+    const entities = ["orders", "clients", "products", "materials", "manufacturing", "suppliers", "purchases"] as const;
+    Promise.all(entities.map(async (entity) => {
+      const response = await fetch(`/api/khora?entity=${entity}`);
+      if (!response.ok) throw new Error();
+      const data = await response.json() as { rows?: Array<Record<string, unknown>> };
+      return data.rows ?? [];
+    })).then(([orders, clients, products, materials, batches, suppliers, purchases]) => {
+      if (active) setOperationalData({ orders, clients, products, materials, batches, suppliers, purchases });
+    }).catch(() => { if (active) setOperationalData(emptyOperationalData); });
+    return () => { active = false; };
+  }, [recordRevision]);
 
   useEffect(() => {
     function onShortcut(event: KeyboardEvent) {
@@ -88,12 +107,12 @@ export default function Home() {
   return <div className="app-shell">
     <header className="desktop-navbar">
       <button className="navbar-brand" onClick={() => goTo("inicio")} aria-label="Ir al inicio de KHORA"><span className="brand-mark">K</span><span><strong>KHORA</strong><small>Gestión simple</small></span></button>
-      <nav ref={primaryNavRef} className="horizontal-nav" aria-label="Navegación principal">{primaryNavigation.map((item) => { const active = isPrimaryActive(item); if (item.type === "link") return <button key={item.id} className={active ? "active" : ""} onClick={() => goTo(item.id)} title={item.label}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "pedidos" && <b className="nav-count">4</b>}</button>; const expanded = openNavGroup === item.id; return <div className={`top-nav-group ${active ? "has-active" : ""}`} key={item.id}><button className={active ? "active" : ""} onClick={() => setOpenNavGroup((current) => current === item.id ? null : item.id)} aria-haspopup="menu" aria-expanded={expanded} title={item.label}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span><i className="nav-chevron" aria-hidden="true"><KhoraIcon name="chevron-down" /></i>{item.id === "produccion" && <b className="nav-alert">!</b>}</button>{expanded && <div className="top-nav-menu" role="menu" aria-label={item.label}>{item.children.map((child) => <button key={child.id} role="menuitem" className={section === child.id ? "selected" : ""} onClick={() => goTo(child.id)}><KhoraIcon name={child.icon} /><span>{child.label}</span>{child.id === "stock" && <b className="nav-alert">!</b>}</button>)}</div>}</div>; })}</nav>
+      <nav ref={primaryNavRef} className="horizontal-nav" aria-label="Navegación principal">{primaryNavigation.map((item) => { const active = isPrimaryActive(item); if (item.type === "link") return <button key={item.id} className={active ? "active" : ""} onClick={() => goTo(item.id)} title={item.label}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "pedidos" && pendingOrderCount > 0 && <b className="nav-count">{pendingOrderCount}</b>}</button>; const expanded = openNavGroup === item.id; return <div className={`top-nav-group ${active ? "has-active" : ""}`} key={item.id}><button className={active ? "active" : ""} onClick={() => setOpenNavGroup((current) => current === item.id ? null : item.id)} aria-haspopup="menu" aria-expanded={expanded} title={item.label}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span><i className="nav-chevron" aria-hidden="true"><KhoraIcon name="chevron-down" /></i>{item.id === "produccion" && productionAttention && <b className="nav-alert">!</b>}</button>{expanded && <div className="top-nav-menu" role="menu" aria-label={item.label}>{item.children.map((child) => <button key={child.id} role="menuitem" className={section === child.id ? "selected" : ""} onClick={() => goTo(child.id)}><KhoraIcon name={child.icon} /><span>{child.label}</span>{child.id === "stock" && lowMaterialCount > 0 && <b className="nav-alert">!</b>}</button>)}</div>}</div>; })}</nav>
       <div className="navbar-user"><div className="profile-wrap"><button className="navbar-profile" onClick={() => setProfileOpen((value) => !value)} aria-expanded={profileOpen}><span className="avatar">PZ</span><span><strong>Paula</strong><small>Administradora</small></span><i><KhoraIcon name="chevron-down" /></i></button>{profileOpen && <div className="profile-menu"><button><KhoraIcon name={moduleIcons.configuracion} /> Configuración</button><button>◌ Mi perfil</button><button onClick={signOut}>Cerrar sesión</button></div>}</div></div>
     </header>
     <aside className={`sidebar ${mobileNav ? "is-open" : ""}`} aria-label="Navegación principal">
       <div className="brand-block"><div className="brand-mark" aria-hidden="true">K</div><div><strong>KHORA</strong><span>Gestión simple</span></div><button className="sidebar-close" onClick={() => setMobileNav(false)} aria-label="Cerrar menú">×</button></div>
-      <nav className="side-nav"><span className="nav-caption">GESTIÓN</span>{navigation.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => goTo(item.id)}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "pedidos" && <b className="nav-count">4</b>}{item.id === "stock" && <b className="nav-alert">!</b>}</button>)}</nav>
+      <nav className="side-nav"><span className="nav-caption">GESTIÓN</span>{navigation.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => goTo(item.id)}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "pedidos" && pendingOrderCount > 0 && <b className="nav-count">{pendingOrderCount}</b>}{item.id === "stock" && lowMaterialCount > 0 && <b className="nav-alert">!</b>}</button>)}</nav>
       <div className="sidebar-bottom"><div className="profile-mini"><div className="avatar">PZ</div><div><strong>Paula</strong><span>Administradora</span></div><button aria-label="Opciones del perfil">•••</button></div></div>
     </aside>
     {mobileNav && <button className="sidebar-scrim" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}
@@ -132,8 +151,8 @@ function CreateForm({ kind, onSubmit, onCancel }: { kind: string; onSubmit: (eve
   const k = kind.toLowerCase(), isContact = k.includes("cliente") || k.includes("proveedor"), isMoney = k.includes("venta") || k.includes("compra") || k.includes("gasto") || k.includes("pedido"), isStock = k.includes("fabric") || k.includes("stock") || k.includes("producto");
   return <form className="drawer-form" onSubmit={onSubmit}><div className="drawer-body"><div className="form-intro"><span>i</span><p>Completá lo esencial. Podés agregar más detalles después desde la ficha.</p></div>
     {isContact && <><Field name="name" label="Nombre o razón social" placeholder="Ej. María López" /><div className="field-row"><Field name="phone" label="Teléfono / WhatsApp" placeholder="+54 9…" required={false} /><Field name="email" label="Email" type="email" placeholder="nombre@email.com" required={false} /></div><Field name="address" label="Dirección" placeholder="Calle, número, localidad" required={false} /></>}
-    {isMoney && <>{k.includes("gasto") ? <ExpenseCreateFields /> : <><div className="field-row"><Field label={k.includes("compra") ? "Proveedor" : "Cliente"} as="select" options={["Seleccionar…", "Mariana López", "Estudio Nativa", "Casa Calma"]} /><Field label="Fecha" type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></div><Field label="Producto o concepto" placeholder="Empezá a escribir para buscar…" /><div className="field-row"><Field label="Cantidad" type="number" defaultValue="1" /><Field label="Importe (ARS)" type="number" placeholder="$ 0" /></div><Field label="Estado de pago" as="select" options={["Pagado", "Pendiente", "Parcial"]} /></>}</>}
-    {isStock && <><Field label="Producto o materia prima" as="select" options={["Seleccionar…", "Difusor Lavanda 250 ml", "Home Spray Jazmín", "Alcohol de cereal", "Esencia Lavanda"]} /><div className="field-row"><Field label="Cantidad" type="number" defaultValue="1" /><Field label="Fecha" type="date" defaultValue="2026-08-13" /></div><Field label="Motivo u observación" placeholder="Escribí una referencia clara…" required={false} /></>}
+    {isMoney && <>{k.includes("gasto") ? <ExpenseCreateFields /> : <><div className="field-row"><Field label={k.includes("compra") ? "Proveedor" : "Cliente"} as="select" options={["Seleccionar…"]} /><Field label="Fecha" type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></div><Field label="Producto o concepto" placeholder="Empezá a escribir para buscar…" /><div className="field-row"><Field label="Cantidad" type="number" defaultValue="1" /><Field label="Importe (ARS)" type="number" placeholder="$ 0" /></div><Field label="Estado de pago" as="select" options={["Pagado", "Pendiente", "Parcial"]} /></>}</>}
+    {isStock && <><Field label="Producto o materia prima" as="select" options={["Seleccionar…"]} /><div className="field-row"><Field label="Cantidad" type="number" defaultValue="1" /><Field label="Fecha" type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></div><Field label="Motivo u observación" placeholder="Escribí una referencia clara…" required={false} /></>}
     {!isContact && !isMoney && !isStock && <Field label="Nombre" placeholder="Nombre del registro" />}{!k.includes("gasto") && <label className="field"><span>Notas internas <small>OPCIONAL</small></span><textarea name="notes" rows={4} placeholder="Información útil para recordar…" /></label>}</div><div className="drawer-footer"><button type="button" className="secondary-button" onClick={onCancel}>Cancelar</button><button className="primary-button">Guardar</button></div></form>;
 }
 
