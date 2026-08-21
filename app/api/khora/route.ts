@@ -32,7 +32,7 @@ const listMaterialCodes=async(prefix:string)=>{
 };
 
 const recalcStatements=()=>[
- db().prepare(`UPDATE products SET estimated_cost_cents=COALESCE((SELECT ROUND(SUM(ri.quantity_per_yield*rm.current_cost_cents)/r.yield_quantity) FROM recipes r JOIN recipe_items ri ON ri.recipe_id=r.id JOIN raw_materials rm ON rm.id=ri.material_id WHERE r.product_id=products.id AND r.active=1),estimated_cost_cents) WHERE type='MANUFACTURED'`),
+ db().prepare(`UPDATE products SET estimated_cost_cents=COALESCE((SELECT ROUND(SUM(ri.quantity_per_yield*rm.current_cost_cents)/MAX(r.yield_quantity)) FROM recipes r JOIN recipe_items ri ON ri.recipe_id=r.id JOIN raw_materials rm ON rm.id=ri.material_id WHERE r.product_id=products.id AND r.active=1),estimated_cost_cents) WHERE type='MANUFACTURED'`),
  db().prepare(`UPDATE products SET estimated_cost_cents=COALESCE((SELECT ROUND(COALESCE((SELECT SUM(cri.quantity*p2.estimated_cost_cents) FROM combo_recipe_items cri JOIN products p2 ON p2.id=cri.component_product_id WHERE cri.combo_id=c.id),0)+COALESCE((SELECT SUM(cmi.quantity*rm.current_cost_cents) FROM combo_material_items cmi JOIN raw_materials rm ON rm.id=cmi.material_id WHERE cmi.combo_id=c.id),0)) FROM combos c WHERE c.product_id=products.id AND c.active=1),estimated_cost_cents) WHERE type='COMBO'`),
  db().prepare(`UPDATE products SET profit_percentage=CASE WHEN (CASE WHEN last_batch_unit_cost_cents>0 THEN last_batch_unit_cost_cents ELSE estimated_cost_cents END)>0 THEN ((sale_price_cents-(CASE WHEN last_batch_unit_cost_cents>0 THEN last_batch_unit_cost_cents ELSE estimated_cost_cents END))*100.0/(CASE WHEN last_batch_unit_cost_cents>0 THEN last_batch_unit_cost_cents ELSE estimated_cost_cents END)) ELSE 0 END`)
 ];
