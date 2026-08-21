@@ -266,6 +266,25 @@ test("crear una materia prima comienza en cero y no simula una compra", async ()
   assert.doesNotMatch(route.match(/if\(action==="save_material"\)[\s\S]*?return ok\(\{ok:true,code:visible,currentStock:0,unit\}\)\}/)?.[0] ?? "", /raw_material_purchases|stock_movements/);
 });
 
+test("las categorías de materias primas se eliminan con confirmación y protección de dependencias", async () => {
+  const [route, sections, styles] = await Promise.all([
+    read("app/api/khora/route.ts"),
+    read("app/khora-sections.tsx"),
+    read("app/globals.css"),
+  ]);
+  assert.match(route, /action==="delete_category"/);
+  assert.match(route, /FROM raw_materials WHERE category_id=\?/);
+  assert.match(route, /FROM code_base WHERE category_id=\?/);
+  assert.match(route, /FROM products WHERE category_id=\?/);
+  assert.match(route, /FROM expenses WHERE category_id=\?/);
+  assert.match(route, /CATEGORY_IN_USE/);
+  assert.match(route, /DELETE FROM categories WHERE id=\?/);
+  assert.match(sections, /CategoryDeleteDialog/);
+  assert.match(sections, /category-delete-button/);
+  assert.match(sections, /Eliminar categoría/);
+  assert.match(styles, /category-delete-button:hover/);
+});
+
 test("la Fase B convierte unidades y calcula promedio ponderado móvil", async () => {
   const inventory = await import("../app/khora-inventory.ts");
   assert.equal(inventory.convertUnit(5, "litro", "ml"), 5000);
