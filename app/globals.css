@@ -187,6 +187,7 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 .data-table tbody tr{transition:background-color .15s ease}
 .data-table tbody tr:nth-child(even){background:var(--table-row-alt)}
 .data-table tbody tr:hover{background:#fbfcfa}
+.table-actions{display:flex;align-items:center;gap:5px}.row-icon-button{width:28px;height:28px;border:0;border-radius:7px;background:transparent;color:#76877e;display:inline-grid;place-items:center;cursor:pointer;transition:.18s}.row-icon-button svg,.category-delete-button svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}.row-icon-button.edit:hover{background:#eaf2ed;color:#356b57}.row-icon-button.delete:hover{background:#fae9e6;color:#b45047}.supplier-toolbar button.active-filter{background:#edf3ef;color:#315d4e;border-color:#c8d9ce;font-weight:700}
 .data-table tbody tr[aria-selected="true"],.data-table tbody tr[aria-current="true"],.data-table tbody tr.selected,.data-table tbody tr.active,.data-table tbody tr.expanded{background:var(--sage-pale)}
 
 /* Sistema global de microinteracciones KHORA */
