@@ -11,6 +11,7 @@
     "build": "next build",
     "start": "next start",
     "check:db": "node scripts/check-supabase.mjs",
+    "setup:storage": "node scripts/setup-private-storage.mjs",
     "test": "next build && node --test tests/khora-structure.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work/site-package-stage/dist",
     "db:generate": "drizzle-kit generate"

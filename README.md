@@ -50,13 +50,13 @@ pnpm check:db
 - Las 39 tablas públicas tienen Row Level Security habilitado y no exponen políticas anónimas.
 - Supabase Auth mantiene la sesión en cookies y protege tanto las pantallas como `/api/khora`.
 - No existe registro público: las cuentas se administran desde Supabase y se valida el correo permitido.
+- Supabase Storage usa los buckets privados `product-images` y `business-documents`, con políticas exclusivas para la administradora.
 - No se usan `localStorage` ni `sessionStorage` como fuente de verdad.
 
 No aplicar migraciones destructivas ni importar información real sin una copia de seguridad y aprobación explícita.
 
 ## Próximos pasos de producción
 
-1. Crear buckets privados y políticas de Supabase Storage.
-2. Retirar los datos ficticios restantes o reemplazarlos por carga real.
-3. Configurar `DATABASE_URL` en Vercel.
-4. Importar datos, validar stock/costos y desplegar.
+1. Retirar los datos ficticios restantes o reemplazarlos por carga real.
+2. Configurar variables privadas y públicas en Vercel.
+3. Importar datos, validar stock/costos y desplegar.
