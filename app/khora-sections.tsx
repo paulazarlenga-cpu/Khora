@@ -783,7 +783,9 @@ function MaterialFormDialog({ categories, suppliers, existingCodes, onCancel, on
       const result = await response.json() as { error?: string; material?: { id?: number; code?: string; current_stock?: number; minimum_stock?: number; current_cost_cents?: number } };
       if (!response.ok) throw new Error(result.error ?? "No se pudo guardar la materia prima");
       const supplier = suppliers.find((item) => item.id === supplierId);
-      onSaved({ id: result.material?.id ?? Date.now(), code: result.material?.code ?? suggestedCode, name: name.trim(), category: category.name, categoryId: category.id, prefix: category.prefix, unit, stock: result.material?.current_stock ?? 0, minimum: result.material?.minimum_stock ?? minimum, cost: result.material?.current_cost_cents ?? 0, supplier: supplier?.name ?? "Sin proveedor", supplierId, notes });
+      const materialId = Number(result.material?.id);
+      if (!Number.isInteger(materialId) || materialId <= 0) throw new Error("La materia prima se guardó, pero no se recibió su identificador.");
+      onSaved({ id: materialId, code: result.material?.code ?? suggestedCode, name: name.trim(), category: category.name, categoryId: category.id, prefix: category.prefix, unit, stock: result.material?.current_stock ?? 0, minimum: result.material?.minimum_stock ?? minimum, cost: result.material?.current_cost_cents ?? 0, supplier: supplier?.name ?? "Sin proveedor", supplierId, notes });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo guardar la materia prima"); } finally { setSaving(false); }
   }
   return <div className="drawer-layer">
@@ -817,9 +819,11 @@ function CategoryFormDialog({ onCancel, onSaved }: { onCancel: () => void; onSav
     setSaving(true); setError("");
     try {
       const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "save_category", name, prefix, kind: "MATERIAL" }) });
-      const result = await response.json() as { error?: string };
+      const result = await response.json() as { error?: string; id?: number; prefix?: string };
       if (!response.ok) throw new Error(result.error ?? "No se pudo guardar la categoría");
-      onSaved({ id: Date.now(), name: name.trim(), prefix, kind: "MATERIAL", active: true });
+      const categoryId = Number(result.id);
+      if (!Number.isInteger(categoryId) || categoryId <= 0) throw new Error("La categoría se guardó, pero no se recibió su identificador.");
+      onSaved({ id: categoryId, name: name.trim(), prefix: result.prefix ?? prefix, kind: "MATERIAL", active: true });
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo guardar la categoría"); } finally { setSaving(false); }
   }
   return <div className="confirm-layer"><button className="drawer-backdrop" onClick={onCancel} aria-label="Cancelar" /><section className="confirm-dialog category-dialog" role="dialog" aria-modal="true" aria-labelledby="category-title"><header><div><p>ORGANIZACIÓN</p><h2 id="category-title">Nueva categoría</h2><span>El prefijo se usará en los códigos de sus materias primas.</span></div><button onClick={onCancel} aria-label="Cerrar">×</button></header><div className="category-form-body"><label><span>Nombre *</span><input autoFocus value={name} onChange={(event) => { const value = event.target.value; setName(value); setPrefix(categoryPrefix(value)); }} placeholder="Ej. Esencias" /></label><label><span>Prefijo *</span><input maxLength={4} value={prefix} onChange={(event) => setPrefix(event.target.value.replace(/[^a-z0-9]/gi, "").toUpperCase())} /></label>{error && <p className="form-error" role="alert">{error}</p>}</div><footer><button className="secondary-button" onClick={onCancel}>Cancelar</button><button className="primary-button" disabled={saving} aria-busy={saving} onClick={save}>{saving ? "Guardando…" : "Crear categoría"}</button></footer></section></div>;
