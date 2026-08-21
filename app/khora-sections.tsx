@@ -2,10 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { batches, comboDefinitions, customers, expenses, materials, money, months, orders, priceLists, products, purchases, recipeDefinitions, SectionId, suppliers, Tone } from "./khora-data";
-import { getOrderTimeline } from "./khora-operations";
-import { analyzeOrder, getComboBreakdown, getProductionPlan, getPurchaseNeeds, type ProductionPlanItem, type PurchaseNeed, type RequirementCheck } from "./khora-planning";
-import { buildWhatsAppLink, buildWhatsAppMessage, getCustomerInsights, getPriceList, getProductMaterialImpacts, getProductProfitability, getRecoveryCustomers, priceForList, recommendedPrice, simulateMaterialIncrease, type CustomerInsight, type WhatsAppTemplate } from "./khora-sales";
+import { batches, comboDefinitions, customers, expenses, materials, money, months, orders, products, purchases, recipeDefinitions, SectionId, suppliers, Tone } from "./khora-data";
+import { getComboBreakdown, getProductionPlan, getPurchaseNeeds, type ProductionPlanItem, type PurchaseNeed, type RequirementCheck } from "./khora-planning";
+import { buildWhatsAppLink, buildWhatsAppMessage, getCustomerInsights, getProductMaterialImpacts, getProductProfitability, getRecoveryCustomers, recommendedPrice, simulateMaterialIncrease, type CustomerInsight, type WhatsAppTemplate } from "./khora-sales";
 import { compareMonthlyClosures, getAvailableClosures, getCashPanel, getMonthlyClose, type CashPeriod } from "./khora-finance";
 import { calendarLayers, countCalendarEvents, getBusinessCalendarEvents, type BusinessCalendarEvent, type CalendarLayer } from "./khora-calendar";
 import { baseUnits, categoryPrefix, convertUnit, materialStockStatus, productsUsingMaterial, purchaseProjection, stockValue, suggestMaterialCode } from "./khora-inventory";
@@ -34,6 +33,23 @@ export function SectionContent({ section, search, onNavigate, onCreate }: Props)
   if (section === "proveedores") return <Suppliers search={search} />;
   if (section === "calendario") return <CalendarPage onNavigate={onNavigate} />;
   return <Finance />;
+}
+
+function useKhoraRows<T extends Record<string, unknown>>(entity: string) {
+  const [rows, setRows] = useState<T[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/khora?entity=${entity}`)
+      .then(async (response) => { const data = await response.json() as { rows?: T[]; error?: string }; if (!response.ok) throw new Error(data.error ?? "No se pudieron cargar los datos"); return data.rows ?? []; })
+      .then((data) => { if (active) { setRows(data); setError(""); } })
+      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "No se pudieron cargar los datos"); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [entity, revision]);
+  return { rows, loading, error, refresh: () => { setLoading(true); setRevision((value) => value + 1); } };
 }
 
 function Dashboard({ onNavigate }: { onNavigate: (section: SectionId, query?: string) => void }) {
@@ -115,12 +131,16 @@ function DashboardMonthlyChart({ rows }: { rows: Array<Record<string, unknown>> 
 }
 
 function Sales({ search }: { search: string }) {
-  const rows = orders.filter((order) => includesSearch(order, search));
+  type SaleRow = { id: number; sold_at: string; client?: string; status: string; payment_status: string; origin: string; order_number?: string; total_cents: number; paid_cents: number; pending_cents: number } & Record<string, unknown>;
+  const sales = useKhoraRows<SaleRow>("sales");
+  const rows = sales.rows.filter((sale) => includesSearch(sale, search));
   const [tab, setTab] = useState("Ventas");
   const [showForm, setShowForm] = useState(false);
   const [notice, setNotice] = useState("");
   const [documentLinks, setDocumentLinks] = useState<Array<{ id: number; filename: string }>>([]);
-  return <div className="section-stack"><Tabs tabs={["Ventas", "Listas de precios"]} active={tab} onChange={setTab} />{notice && <div className="inline-notice" role="status"><span>✓</span>{notice}</div>}{documentLinks.length > 0 && <div className="sale-document-links"><div><strong>Documentos de la última venta</strong><span>El archivo oficial quedó vinculado a KHORA.</span></div>{documentLinks.map((document) => <div key={document.id}><a href={`/api/khora?entity=document_pdf&id=${document.id}`} target="_blank" rel="noreferrer">Ver PDF</a><a href={`/api/khora?entity=document_pdf&id=${document.id}&download=1`}>Descargar {document.filename}</a></div>)}</div>}{tab === "Ventas" ? <><div className="sale-create-row"><div><strong>Venta directa con entrega inmediata</strong><span>Podés sumar varios productos; KHORA valida stock y consume lotes FIFO al confirmar.</span></div><button className="primary-button" onClick={() => setShowForm(true)}>＋ Nueva venta</button></div><div className="summary-row"><MiniStat label="Vendido en agosto" value={money(1450000)} detail="13,3% más que julio" tone="success" /><MiniStat label="Cobrado" value={money(1312800)} detail="90,5% del total" tone="info" /><MiniStat label="Por cobrar" value={money(137200)} detail="3 ventas pendientes" tone="warning" /><MiniStat label="Ticket promedio" value={money(48300)} detail="30 ventas" tone="neutral" /></div><Toolbar placeholder="Buscar por cliente o número de venta…" filters={["Este mes", "Todos los pagos", "Todos los medios"]} /><Panel title="Ventas recientes" subtitle={`${rows.length} movimientos encontrados`} action={<button className="secondary-button">↓ Exportar</button>}><DataTable headers={["Venta", "Fecha", "Cliente", "Detalle", "Total", "Pago", "Estado", ""]}>{rows.map((sale) => <tr key={sale.id}><td><strong>{sale.id.replace("#", "V-")}</strong></td><td>{sale.date}</td><td><CellPerson name={sale.customer} /></td><td className="muted-cell">{sale.items}</td><td><strong>{money(sale.total)}</strong></td><td><Badge tone={sale.payment === "Pagado" ? "success" : sale.payment === "Parcial" ? "warning" : "danger"}>{sale.payment}</Badge></td><td><Badge tone="success">Confirmada</Badge></td><td><MoreButton /></td></tr>)}</DataTable></Panel></> : <PriceLists />}{showForm && <DirectSaleFormDialog onCancel={() => setShowForm(false)} onSaved={(message, documents) => { setShowForm(false); setNotice(message); setDocumentLinks(documents); window.setTimeout(() => setNotice(""), 5000); }} />}</div>;
+  const sold = rows.reduce((sum, sale) => sum + Number(sale.total_cents), 0), collected = rows.reduce((sum, sale) => sum + Number(sale.paid_cents), 0), pending = rows.reduce((sum, sale) => sum + Number(sale.pending_cents), 0), ticket = rows.length ? sold / rows.length : 0;
+  const paymentLabel = (status: string) => status === "PAID" ? "Pagado" : status === "PARTIAL" ? "Parcial" : status === "CANCELLED" ? "Anulado" : "Pendiente";
+  return <div className="section-stack"><Tabs tabs={["Ventas", "Listas de precios"]} active={tab} onChange={setTab} />{notice && <div className="inline-notice" role="status"><span>✓</span>{notice}</div>}{sales.error && <div className="inline-notice error" role="alert"><span>!</span>{sales.error}</div>}{documentLinks.length > 0 && <div className="sale-document-links"><div><strong>Documentos de la última venta</strong><span>El archivo oficial quedó vinculado a KHORA.</span></div>{documentLinks.map((document) => <div key={document.id}><a href={`/api/khora?entity=document_pdf&id=${document.id}`} target="_blank" rel="noreferrer">Ver PDF</a><a href={`/api/khora?entity=document_pdf&id=${document.id}&download=1`}>Descargar {document.filename}</a></div>)}</div>}{tab === "Ventas" ? <><div className="sale-create-row"><div><strong>Venta directa con entrega inmediata</strong><span>Podés sumar varios productos; KHORA valida stock y consume lotes FIFO al confirmar.</span></div><button className="primary-button" onClick={() => setShowForm(true)}>＋ Nueva venta</button></div><div className="summary-row"><MiniStat label="Vendido" value={money(sold / 100)} detail={`${rows.length} ventas registradas`} tone="success" /><MiniStat label="Cobrado" value={money(collected / 100)} detail={sold ? `${Math.round(collected / sold * 100)}% del total` : "Sin ventas"} tone="info" /><MiniStat label="Por cobrar" value={money(pending / 100)} detail={`${rows.filter((sale) => Number(sale.pending_cents) > 0).length} ventas pendientes`} tone="warning" /><MiniStat label="Ticket promedio" value={money(ticket / 100)} detail="Promedio del historial visible" tone="neutral" /></div><Toolbar placeholder="Buscar por cliente o número de venta…" filters={["Todas las fechas", "Todos los pagos", "Todos los medios"]} /><Panel title="Ventas recientes" subtitle={sales.loading ? "Actualizando…" : `${rows.length} movimientos encontrados`} action={<button className="secondary-button">↓ Exportar</button>}><DataTable headers={["Venta", "Fecha", "Cliente", "Origen", "Total", "Pago", "Estado", ""]}>{rows.map((sale) => <tr key={sale.id}><td><strong>V-{sale.id}</strong></td><td>{String(sale.sold_at).slice(0, 10)}</td><td><CellPerson name={sale.client || "Consumidor final"} /></td><td className="muted-cell">{sale.order_number ? `Pedido ${sale.order_number}` : sale.origin === "DIRECT" ? "Venta directa" : sale.origin}</td><td><strong>{money(Number(sale.total_cents) / 100)}</strong></td><td><Badge tone={sale.payment_status === "PAID" ? "success" : sale.payment_status === "PARTIAL" ? "warning" : "danger"}>{paymentLabel(sale.payment_status)}</Badge></td><td><Badge tone={sale.status === "CANCELLED" ? "danger" : "success"}>{sale.status === "CANCELLED" ? "Anulada" : "Confirmada"}</Badge></td><td><MoreButton /></td></tr>)}</DataTable>{!sales.loading && !rows.length && <div className="recipe-empty">Todavía no hay ventas registradas.</div>}</Panel></> : <PriceLists />}{showForm && <DirectSaleFormDialog onCancel={() => setShowForm(false)} onSaved={(message, documents) => { setShowForm(false); setNotice(message); setDocumentLinks(documents); sales.refresh(); window.setTimeout(() => setNotice(""), 5000); }} />}</div>;
 }
 
 type DirectSaleProduct = { id: number; code: string; name: string; type: string; stock: number; price: number };
@@ -128,10 +148,9 @@ type DirectSaleClient = { id: number; name: string };
 type DirectSaleLine = { key: string; kind: "product" | "manual"; productId?: number; description: string; quantity: number; unitPriceCents: number };
 
 function DirectSaleFormDialog({ onCancel, onSaved }: { onCancel: () => void; onSaved: (message: string, documents: Array<{ id: number; filename: string }>) => void }) {
-  const fallbackCatalog: DirectSaleProduct[] = products.map((product, index) => ({ id: index + 1, code: product.code, name: product.name, type: product.code.startsWith("COM-") ? "COMBO" : "MANUFACTURED", stock: product.stock, price: product.price * 100 }));
   const money = (cents: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(cents / 100);
   const [clients, setClients] = useState<DirectSaleClient[]>([]);
-  const [catalog, setCatalog] = useState<DirectSaleProduct[]>(fallbackCatalog);
+  const [catalog, setCatalog] = useState<DirectSaleProduct[]>([]);
   const [clientId, setClientId] = useState<number | undefined>();
   const [priceList, setPriceList] = useState("Precio estándar");
   const [lines, setLines] = useState<DirectSaleLine[]>([]);
@@ -148,7 +167,7 @@ function DirectSaleFormDialog({ onCancel, onSaved }: { onCancel: () => void; onS
   const total = Math.max(0, subtotal - Math.round(discountPesos * 100) + Math.round(adjustmentPesos * 100));
 
   useEffect(() => { fetch("/api/khora?entity=lookups").then((response) => response.json()).then((data: { clients?: Array<Record<string, unknown>> }) => setClients((data.clients ?? []).map((row) => ({ id: Number(row.id), name: String(row.name) })))).catch(() => undefined); }, []);
-  useEffect(() => { let active = true; fetch(`/api/khora?entity=sale_catalog${clientId ? `&clientId=${clientId}` : ""}`).then((response) => response.json()).then((data: { client?: Record<string, unknown> | null; products?: Array<Record<string, unknown>> }) => { if (!active) return; const next = (data.products ?? []).map((row) => ({ id: Number(row.id), code: String(row.code), name: String(row.name), type: String(row.type), stock: Number(row.current_stock), price: Number(row.resolved_price_cents) })); if (next.length) { setCatalog(next); setLines((current) => current.map((line) => { if (line.kind === "manual") return line; const product = next.find((item) => item.id === line.productId); return product ? { ...line, description: product.name, unitPriceCents: product.price } : line; })); } setPriceList(String(data.client?.price_list ?? "Precio estándar")); }).catch(() => undefined); return () => { active = false; }; }, [clientId]);
+  useEffect(() => { let active = true; fetch(`/api/khora?entity=sale_catalog${clientId ? `&clientId=${clientId}` : ""}`).then((response) => response.json()).then((data: { client?: Record<string, unknown> | null; products?: Array<Record<string, unknown>> }) => { if (!active) return; const next = (data.products ?? []).map((row) => ({ id: Number(row.id), code: String(row.code), name: String(row.name), type: String(row.type), stock: Number(row.current_stock), price: Number(row.resolved_price_cents) })); setCatalog(next); setLines((current) => current.map((line) => { if (line.kind === "manual") return line; const product = next.find((item) => item.id === line.productId); return product ? { ...line, description: product.name, unitPriceCents: product.price } : line; })); setPriceList(String(data.client?.price_list ?? "Precio estándar")); }).catch(() => undefined); return () => { active = false; }; }, [clientId]);
 
   function addProduct() { const product = catalog.find((item) => !lines.some((line) => line.productId === item.id)); if (!product) { setError("No quedan productos disponibles para agregar."); return; } setLines((current) => [...current, { key: crypto.randomUUID(), kind: "product", productId: product.id, description: product.name, quantity: 1, unitPriceCents: product.price }]); setError(""); }
   function addManual() { setLines((current) => [...current, { key: crypto.randomUUID(), kind: "manual", description: "", quantity: 1, unitPriceCents: 0 }]); setError(""); }
@@ -160,13 +179,21 @@ function DirectSaleFormDialog({ onCancel, onSaved }: { onCancel: () => void; onS
 }
 
 function PriceLists() {
-  return <><div className="summary-row three"><MiniStat label="Listas activas" value={String(priceLists.length)} detail="Sin duplicar productos" tone="info" /><MiniStat label="Clientes mayoristas" value={String(customers.filter((customer) => customer.priceListCode === "WHOLESALE").length)} detail="Precio automático" tone="success" /><MiniStat label="Precios históricos" value="Protegidos" detail="Cada venta conserva su precio" tone="neutral" /></div><div className="price-list-grid">{priceLists.map((list) => <article key={list.code}><header><div><small>{list.code}</small><h2>{list.name}</h2></div><Badge tone={list.tone}>{list.modifier === 1 ? "Base" : `${Math.round((1 - list.modifier) * 100)}% menos`}</Badge></header><p>{list.description}</p><dl><div><dt>Clientes asignados</dt><dd>{list.clients}</dd></div><div><dt>Difusor Lavanda</dt><dd>{money(priceForList("PRO-001", list.code))}</dd></div><div><dt>Combo Relax</dt><dd>{money(priceForList("COM-001", list.code))}</dd></div></dl><footer><span>Se aplica al crear el pedido o la venta</span><button className="secondary-button">Editar lista</button></footer></article>)}</div><div className="price-history-note"><span>✓</span><div><strong>Historial protegido</strong><p>Los cambios futuros de una lista no modifican los precios ya guardados en ventas y pedidos.</p></div></div></>;
+  type PriceListRow = { id: number; code: string; name: string; price_modifier: number; is_default: boolean; active: boolean; clients_count: number; custom_prices: number } & Record<string, unknown>;
+  const lists = useKhoraRows<PriceListRow>("price_lists");
+  const active = lists.rows.filter((list) => list.active);
+  return <><div className="summary-row three"><MiniStat label="Listas activas" value={String(active.length)} detail="Configuradas en Supabase" tone="info" /><MiniStat label="Clientes asignados" value={String(lists.rows.reduce((sum, list) => sum + Number(list.clients_count), 0))} detail="Precio automático" tone="success" /><MiniStat label="Precios históricos" value="Protegidos" detail="Cada venta conserva su precio" tone="neutral" /></div>{lists.error && <div className="inline-notice error"><span>!</span>{lists.error}</div>}<div className="price-list-grid">{lists.rows.map((list) => <article key={list.id}><header><div><small>{list.code}</small><h2>{list.name}</h2></div><Badge tone={!list.active ? "neutral" : list.is_default ? "success" : "info"}>{!list.active ? "Inactiva" : list.is_default ? "Predeterminada" : "Activa"}</Badge></header><p>{Number(list.price_modifier) === 1 ? "Usa el precio estándar de cada producto." : `${Math.abs(Math.round((1 - Number(list.price_modifier)) * 100))}% ${Number(list.price_modifier) < 1 ? "de descuento" : "de recargo"} sobre el precio estándar.`}</p><dl><div><dt>Clientes asignados</dt><dd>{Number(list.clients_count)}</dd></div><div><dt>Precios personalizados</dt><dd>{Number(list.custom_prices)}</dd></div><div><dt>Modificador</dt><dd>{Number(list.price_modifier).toFixed(2)}×</dd></div></dl><footer><span>Se aplica al crear el pedido o la venta</span></footer></article>)}</div>{!lists.loading && !lists.rows.length && <div className="recipe-empty">Todavía no hay listas de precios configuradas.</div>}<div className="price-history-note"><span>✓</span><div><strong>Historial protegido</strong><p>Los cambios futuros de una lista no modifican los precios ya guardados en ventas y pedidos.</p></div></div></>;
 }
 
-type OrderRecord = (typeof orders)[number];
+type OrderRecord = { id: number; number: string; client?: string; created_at: string; expected_at?: string; total_cents: number; status: string; payment_status: string; delivery_address?: string; notes?: string } & Record<string, unknown>;
 type OrderView = "board" | "list";
 
+const orderStatusLabel = (status: string) => ({ NEW: "Nuevo", PENDING: "Confirmado", PREPARING: "En preparación", MANUFACTURING: "En fabricación", READY: "Listo", SHIPPED: "Enviado", DELIVERED: "Entregado", CANCELLED: "Cancelado" }[status] ?? status);
+const orderStatusTone = (status: string): Tone => status === "CANCELLED" ? "danger" : status === "DELIVERED" || status === "READY" ? "success" : status === "MANUFACTURING" ? "info" : status === "PREPARING" || status === "PENDING" ? "warning" : "neutral";
+const orderPaymentLabel = (status: string) => status === "PAID" ? "Pagado" : status === "PARTIAL" ? "Parcial" : status === "CANCELLED" ? "Anulado" : "Pendiente";
+
 function Orders({ search }: { search: string }) {
+  const ordersData = useKhoraRows<OrderRecord>("orders");
   const [view, setView] = useState<OrderView>("board");
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("Todos");
@@ -175,24 +202,24 @@ function Orders({ search }: { search: string }) {
   const today = startOfDay(new Date());
   useEffect(() => {
     if (!search) return;
-    const requestedOrder = orders.find((order) => order.id === search || order.id.replace("#", "") === search.replace("#", ""));
+    const requestedOrder = ordersData.rows.find((order) => order.number === search || order.number.replace("#", "") === search.replace("#", "") || String(order.id) === search.replace("#", ""));
     if (!requestedOrder) return;
     const timeout = window.setTimeout(() => setSelectedOrder(requestedOrder), 0);
     return () => window.clearTimeout(timeout);
-  }, [search]);
-  const filtered = orders.filter((order) => {
+  }, [search, ordersData.rows]);
+  const filtered = ordersData.rows.filter((order) => {
     const matchesText = includesSearch(order, search) && includesSearch(order, query);
-    const matchesStatus = statusFilter === "Todos" || order.status === statusFilter;
-    const expected = parseDate(order.expectedAt);
-    const daysAway = Math.round((expected.getTime() - today.getTime()) / 86400000);
+    const matchesStatus = statusFilter === "Todos" || orderStatusLabel(order.status) === statusFilter;
+    const expected = order.expected_at ? parseDate(String(order.expected_at).slice(0, 10)) : today;
+    const daysAway = order.expected_at ? Math.round((expected.getTime() - today.getTime()) / 86400000) : Number.POSITIVE_INFINITY;
     const matchesDate = dateFilter === "Todas las fechas" || (dateFilter === "Próximos 7 días" && daysAway >= 0 && daysAway <= 7) || (dateFilter === "Atrasados" && isOrderOverdue(order, today));
     return matchesText && matchesStatus && matchesDate;
   });
   const columns = [
-    { name: "Nuevos", color: "neutral", items: filtered.filter((order) => order.status === "Nuevo") },
-    { name: "En preparación", color: "warning", items: filtered.filter((order) => order.status === "En preparación") },
-    { name: "En fabricación", color: "info", items: filtered.filter((order) => order.status === "En fabricación") },
-    { name: "Listos", color: "success", items: filtered.filter((order) => ["Listo", "Entregado"].includes(order.status)) },
+    { name: "Nuevos", color: "neutral", items: filtered.filter((order) => ["NEW", "PENDING"].includes(order.status)) },
+    { name: "En preparación", color: "warning", items: filtered.filter((order) => order.status === "PREPARING") },
+    { name: "En fabricación", color: "info", items: filtered.filter((order) => order.status === "MANUFACTURING") },
+    { name: "Listos", color: "success", items: filtered.filter((order) => ["READY", "SHIPPED", "DELIVERED"].includes(order.status)) },
   ];
 
   return <div className="section-stack">
@@ -208,11 +235,13 @@ function Orders({ search }: { search: string }) {
       </div>
     </div>
 
-    {view === "board" && <div className="kanban">{columns.map((column) => <section key={column.name}><header><div><i className={`dot ${column.color}`} /><strong>{column.name}</strong></div><span>{column.items.length}</span></header><div className="kanban-cards">{column.items.map((order) => <article className="order-card" key={order.id} role="button" tabIndex={0} onClick={() => setSelectedOrder(order)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedOrder(order); }}><div className="order-card-head"><strong>{order.id}</strong><MoreButton /></div><h3>{order.customer}</h3><p>{order.items}</p><div className="order-meta"><span>{money(order.total)}</span><Badge tone={order.payment === "Pagado" ? "success" : "warning"}>{order.payment}</Badge></div><footer className={isOrderOverdue(order, today) ? "late" : ""}><span>◷ {order.due}</span><Avatar text={initials(order.customer)} small /></footer></article>)}{column.items.length === 0 && <div className="empty-column">No hay pedidos</div>}</div></section>)}</div>}
+    {ordersData.error && <div className="inline-notice error" role="alert"><span>!</span>{ordersData.error}</div>}
 
-    {view === "list" && <Panel title="Todos los pedidos" subtitle={`${filtered.length} pedidos visibles`}><DataTable headers={["Pedido", "Cliente", "Fecha", "Entrega", "Total", "Estado", "Pago", ""]}>{filtered.map((order) => <tr key={order.id}><td><strong>{order.id}</strong></td><td>{order.customer}</td><td>{order.date}</td><td className={isOrderOverdue(order, today) ? "danger-text" : ""}>{order.due}</td><td>{money(order.total)}</td><td><Badge tone={order.tone}>{order.status}</Badge></td><td>{order.payment}</td><td><button className="table-open-button" onClick={() => setSelectedOrder(order)}>Ver detalle</button></td></tr>)}</DataTable></Panel>}
+    {view === "board" && <div className="kanban">{columns.map((column) => <section key={column.name}><header><div><i className={`dot ${column.color}`} /><strong>{column.name}</strong></div><span>{column.items.length}</span></header><div className="kanban-cards">{column.items.map((order) => <article className="order-card" key={order.id} role="button" tabIndex={0} onClick={() => setSelectedOrder(order)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelectedOrder(order); }}><div className="order-card-head"><strong>{order.number}</strong><MoreButton /></div><h3>{order.client || "Sin cliente"}</h3><p>{order.notes || "Sin notas internas"}</p><div className="order-meta"><span>{money(Number(order.total_cents) / 100)}</span><Badge tone={order.payment_status === "PAID" ? "success" : "warning"}>{orderPaymentLabel(order.payment_status)}</Badge></div><footer className={isOrderOverdue(order, today) ? "late" : ""}><span>◷ {order.expected_at ? String(order.expected_at).slice(0, 10) : "Sin fecha"}</span><Avatar text={initials(order.client || "SC")} small /></footer></article>)}{column.items.length === 0 && <div className="empty-column">No hay pedidos</div>}</div></section>)}</div>}
 
-    {selectedOrder && <OrderDetail order={selectedOrder} onClose={() => setSelectedOrder(null)} />}
+    {view === "list" && <Panel title="Todos los pedidos" subtitle={ordersData.loading ? "Actualizando…" : `${filtered.length} pedidos visibles`}><DataTable headers={["Pedido", "Cliente", "Fecha", "Entrega", "Total", "Estado", "Pago", ""]}>{filtered.map((order) => <tr key={order.id}><td><strong>{order.number}</strong></td><td>{order.client || "Sin cliente"}</td><td>{String(order.created_at).slice(0, 10)}</td><td className={isOrderOverdue(order, today) ? "danger-text" : ""}>{order.expected_at ? String(order.expected_at).slice(0, 10) : "Sin fecha"}</td><td>{money(Number(order.total_cents) / 100)}</td><td><Badge tone={orderStatusTone(order.status)}>{orderStatusLabel(order.status)}</Badge></td><td>{orderPaymentLabel(order.payment_status)}</td><td><button className="table-open-button" onClick={() => setSelectedOrder(order)}>Ver detalle</button></td></tr>)}</DataTable>{!ordersData.loading && !filtered.length && <div className="recipe-empty">Todavía no hay pedidos registrados.</div>}</Panel>}
+
+    {selectedOrder && <OrderDetail order={selectedOrder} onClose={() => setSelectedOrder(null)} onChanged={() => { setSelectedOrder(null); ordersData.refresh(); }} />}
   </div>;
 }
 
@@ -263,19 +292,18 @@ function CalendarBusinessEvent({ event, onOpen }: { event: BusinessCalendarEvent
   return <button className={`calendar-business-event ${event.layer} ${event.tone}`} onClick={() => onOpen(event)} title={`${layer.label} · ${event.title}`}><i><KhoraIcon name={layer.icon} /></i><span><strong>{event.title}</strong><small>{event.time ? `${event.time} · ` : ""}{event.subtitle}</small></span></button>;
 }
 
-function OrderDetail({ order, onClose }: { order: OrderRecord; onClose: () => void }) {
-  const timeline = getOrderTimeline(order);
-  const [showPreparation, setShowPreparation] = useState(false);
-  const [showWhatsApp, setShowWhatsApp] = useState(false);
-  const analysis = analyzeOrder(order);
-  const customer = customers.find((item) => item.name === order.customer) ?? customers[0];
-  return <div className="order-detail-layer"><button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar detalle" /><aside className="order-detail" role="dialog" aria-modal="true" aria-labelledby="order-detail-title"><header><div><p>DETALLE DEL PEDIDO</p><h2 id="order-detail-title">Pedido {order.id}</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></header><div className="order-detail-body"><div className="order-detail-customer"><Avatar text={initials(order.customer)} /><div><strong>{order.customer}</strong><span>Cliente · Lista {getPriceList(customer.priceListCode).name}</span></div><button onClick={() => setShowWhatsApp(true)}>WhatsApp ◉</button></div><dl><div><dt>Estado</dt><dd><Badge tone={order.tone}>{order.status}</Badge></dd></div><div><dt>Pago</dt><dd>{order.payment}</dd></div><div><dt>Fecha del pedido</dt><dd>{order.date}</dd></div><div><dt>Entrega prevista</dt><dd>{formatDay(parseDate(order.expectedAt))}</dd></div></dl><section><span>PRODUCTOS</span><article><div><strong>{order.items}</strong><small>Precio congelado al confirmar el pedido</small></div><strong>{money(order.total)}</strong></article></section>{showPreparation && <OrderPreparation analysis={analysis} orderId={order.id} />}<section className="order-timeline" aria-label="Historial del pedido"><span>HISTORIAL DEL PEDIDO</span><ol>{timeline.map((step) => <li className={step.state} key={step.label}><i aria-hidden="true">{step.state === "done" ? "✓" : step.state === "current" ? "●" : "○"}</i><div><strong>{step.label}</strong>{step.at ? <time dateTime={step.at}>{formatTimelineDate(step.at)}</time> : <small>Pendiente</small>}</div></li>)}</ol></section><div className="order-detail-total"><span>Total</span><strong>{money(order.total)}</strong></div></div><footer><button className="secondary-button" onClick={() => setShowWhatsApp(true)}>Enviar WhatsApp</button><button className={showPreparation ? "secondary-button" : "primary-button"} onClick={() => setShowPreparation((value) => !value)}>{showPreparation ? "Cerrar análisis" : "Preparar pedido"}</button><button className="primary-button">Actualizar estado</button></footer></aside>{showWhatsApp && <WhatsAppComposer customer={customer} order={order} onClose={() => setShowWhatsApp(false)} />}</div>;
-}
-
-function OrderPreparation({ analysis, orderId }: { analysis: ReturnType<typeof analyzeOrder>; orderId: string }) {
-  const tone: Tone = analysis.readyFromStock ? "success" : analysis.canPrepare ? "warning" : "danger";
-  const checks = [...analysis.productChecks, ...analysis.componentChecks, ...analysis.materialChecks];
-  return <section className={`preparation-analysis ${tone}`} aria-label={`Disponibilidad para ${orderId}`}><header><span className="preparation-status-icon">{analysis.readyFromStock ? "✓" : analysis.canPrepare ? "⚗" : "!"}</span><div><small>DISPONIBILIDAD</small><h3>{analysis.summary}</h3><p>{analysis.readyFromStock ? "El stock terminado alcanza para completar el pedido." : analysis.canPrepare ? "Hay que fabricar o armar componentes, pero los insumos alcanzan." : "Faltan insumos para poder completar el pedido."}</p></div></header><div className="requirement-list">{checks.map((item) => <RequirementRow key={`${item.kind}-${item.code}`} item={item} />)}</div><footer><i>i</i><span>Esta validación es una simulación. No descuenta ni reserva stock.</span></footer></section>;
+function OrderDetail({ order, onClose, onChanged }: { order: OrderRecord; onClose: () => void; onChanged: () => void }) {
+  const [nextStatus, setNextStatus] = useState(order.status);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  async function saveStatus() {
+    if (nextStatus === order.status) return onClose();
+    setSaving(true); setError("");
+    try { const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "set_order_status", id: order.id, status: nextStatus }) }); const result = await response.json() as { error?: string }; if (!response.ok) throw new Error(result.error ?? "No se pudo actualizar el pedido"); onChanged(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo actualizar el pedido"); }
+    finally { setSaving(false); }
+  }
+  return <div className="order-detail-layer"><button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar detalle" /><aside className="order-detail" role="dialog" aria-modal="true" aria-labelledby="order-detail-title"><header><div><p>DETALLE DEL PEDIDO</p><h2 id="order-detail-title">Pedido {order.number}</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></header><div className="order-detail-body"><div className="order-detail-customer"><Avatar text={initials(order.client || "SC")} /><div><strong>{order.client || "Sin cliente"}</strong><span>Registro guardado en Supabase</span></div></div><dl><div><dt>Estado</dt><dd><Badge tone={orderStatusTone(order.status)}>{orderStatusLabel(order.status)}</Badge></dd></div><div><dt>Pago</dt><dd>{orderPaymentLabel(order.payment_status)}</dd></div><div><dt>Fecha del pedido</dt><dd>{String(order.created_at).slice(0, 10)}</dd></div><div><dt>Entrega prevista</dt><dd>{order.expected_at ? String(order.expected_at).slice(0, 10) : "Sin fecha"}</dd></div></dl><section><span>DATOS OPERATIVOS</span><article><div><strong>{order.delivery_address || "Sin dirección de entrega"}</strong><small>{order.notes || "Sin notas internas"}</small></div><strong>{money(Number(order.total_cents) / 100)}</strong></article></section><label><span>Actualizar estado</span><select value={nextStatus} onChange={(event) => setNextStatus(event.target.value)}><option value="NEW">Nuevo</option><option value="PENDING">Confirmado</option><option value="PREPARING">En preparación</option><option value="MANUFACTURING">En fabricación</option><option value="READY">Listo</option><option value="SHIPPED">Enviado</option><option value="DELIVERED">Entregado</option><option value="CANCELLED">Cancelado</option></select></label>{error && <p className="form-error" role="alert">{error}</p>}<div className="order-detail-total"><span>Total</span><strong>{money(Number(order.total_cents) / 100)}</strong></div></div><footer><button className="secondary-button" onClick={onClose}>Cerrar</button><button className="primary-button" disabled={saving} onClick={saveStatus}>{saving ? "Guardando…" : "Guardar estado"}</button></footer></aside></div>;
 }
 
 function RequirementRow({ item }: { item: RequirementCheck }) {
@@ -296,8 +324,7 @@ function parseDate(value: string) { const [year, month, day] = value.split("-").
 function startOfDay(value: Date) { return new Date(value.getFullYear(), value.getMonth(), value.getDate()); }
 function isoDate(value: Date) { return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`; }
 function formatDay(value: Date) { return new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(value); }
-function formatTimelineDate(value: string) { return new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(value)); }
-function isOrderOverdue(order: OrderRecord, today: Date) { return !["Entregado", "Cancelado"].includes(order.status) && parseDate(order.expectedAt).getTime() < today.getTime(); }
+function isOrderOverdue(order: OrderRecord, today: Date) { return Boolean(order.expected_at) && !["DELIVERED", "CANCELLED"].includes(order.status) && parseDate(String(order.expected_at).slice(0, 10)).getTime() < today.getTime(); }
 
 function Customers({ search }: { search: string }) {
   const insights = getCustomerInsights();
@@ -319,7 +346,7 @@ function CustomerDetail({ insight, onClose, onWhatsApp }: { insight: NonNullable
   return <div className="drawer-layer"><button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar ficha" /><aside className="customer-detail" role="dialog" aria-modal="true" aria-labelledby="customer-detail-title"><header><div><p>FICHA INTELIGENTE</p><h2 id="customer-detail-title">{customer.name}</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></header><div className="customer-detail-body"><div className="customer-profile"><Avatar text={customer.initials} /><div><strong>{customer.name}</strong><span>{customer.phone} · {customer.email}</span><small>{customer.address}</small></div><Badge tone={insight.tone}>{insight.label}</Badge></div><div className="customer-kpis"><div><span>Pedidos</span><strong>{customer.orders}</strong></div><div><span>Total comprado</span><strong>{money(customer.spent)}</strong></div><div><span>Ticket promedio</span><strong>{money(insight.averageTicket)}</strong></div><div><span>Deuda pendiente</span><strong className={insight.pendingDebt ? "danger-text" : ""}>{insight.pendingDebt ? money(insight.pendingDebt) : "—"}</strong></div></div><section className="customer-activity"><header><h3>Relación comercial</h3><Badge tone="info">Lista {insight.priceList.name}</Badge></header><dl><div><dt>Última compra</dt><dd>{customer.last}</dd></div><div><dt>Días sin comprar</dt><dd>{insight.daysWithoutBuying}</dd></div><div><dt>Frecuencia habitual</dt><dd>Cada {customer.usualFrequencyDays} días</dd></div></dl></section><section><h3>Productos más comprados</h3><div className="favorite-products">{insight.favoriteProducts.map((item, index) => <article key={item.product.code}><span>{index + 1}</span><div><strong>{item.product.name}</strong><small>{item.product.code}</small></div><b>{item.quantity} u.</b></article>)}</div></section><section><h3>Compras recientes</h3><div className="customer-purchases">{insight.recentPurchases.map((purchase) => <article key={purchase.id}><div><strong>{purchase.id}</strong><small>{new Intl.DateTimeFormat("es-AR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${purchase.date}T12:00:00`))}</small></div><span>{products.find((product) => product.code === purchase.productCode)?.name}</span><b>{money(purchase.total)}</b><Badge tone={purchase.status === "Pagado" ? "success" : "warning"}>{purchase.status}</Badge></article>)}</div></section></div><footer><button className="secondary-button" onClick={onClose}>Cerrar</button><button className="primary-button" onClick={onWhatsApp}>Preparar WhatsApp</button></footer></aside></div>;
 }
 
-function WhatsAppComposer({ customer, order, defaultTemplate = "confirm", onClose }: { customer: (typeof customers)[number]; order?: OrderRecord; defaultTemplate?: WhatsAppTemplate; onClose: () => void }) {
+function WhatsAppComposer({ customer, order, defaultTemplate = "confirm", onClose }: { customer: (typeof customers)[number]; order?: (typeof orders)[number]; defaultTemplate?: WhatsAppTemplate; onClose: () => void }) {
   const available: Array<{ value: WhatsAppTemplate; label: string }> = order ? [
     { value: "confirm", label: "Confirmar pedido" },
     { value: "preparing", label: "Avisar que está en preparación" },
