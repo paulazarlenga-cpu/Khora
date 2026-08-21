@@ -655,3 +655,32 @@ test("KHORA comparte tokens y estados accesibles de microinteracción", async ()
   assert.match(sections, /aria-busy=\{saving\}/);
   assert.match(sections, /disabled=\{saving\}/);
 });
+
+test("finanzas compara cierres inmutables y permite exportar reportes reales", async () => {
+  const [sections, styles] = await Promise.all([read("app/khora-sections.tsx"), read("app/globals.css")]);
+  assert.match(sections, /function FinanceClosureComparison/);
+  assert.match(sections, /title="Comparación mensual"/);
+  assert.match(sections, /financeVariation/);
+  assert.match(sections, /function FinanceReports/);
+  assert.match(sections, /Imprimir \/ PDF/);
+  assert.match(sections, /Exportar CSV/);
+  assert.match(styles, /\.finance-comparison-selectors/);
+});
+
+test("las alertas operativas se pueden descartar y permanecen ocultas", async () => {
+  const [route, page] = await Promise.all([read("app/api/khora/route.ts"), read("app/page.tsx")]);
+  assert.match(route, /entity==="dismissed_alerts"/);
+  assert.match(route, /dismissed_operational_alerts/);
+  assert.match(page, /function dismissAlert/);
+  assert.match(page, /action: "save_setting"/);
+  assert.match(page, /dismissedAlertIds/);
+});
+
+test("los combos aceptan productos y materias primas directas", async () => {
+  const [route, sections] = await Promise.all([read("app/api/khora/route.ts"), read("app/khora-sections.tsx")]);
+  assert.match(sections, /Materias primas directas/);
+  assert.match(sections, /Agregar materia prima/);
+  assert.match(sections, /materialItems: materialItems\.map/);
+  assert.match(route, /INSERT INTO combo_material_items/);
+  assert.match(route, /Agregá al menos un producto o insumo al combo/);
+});
