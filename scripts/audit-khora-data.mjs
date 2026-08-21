@@ -20,6 +20,8 @@ const businessTables = [
   "stock_movements", "monthly_profits", "profit_history", "orders",
   "order_items", "payments", "shipments", "delivery_notes", "sale_documents",
   "purchase_orders", "purchase_order_items", "audit_logs", "app_settings",
+  "financial_payment_events", "reinvestment_plans", "reinvestment_movements",
+  "monthly_finance_closures",
 ];
 
 const sql = postgres(databaseUrl, {
@@ -49,7 +51,35 @@ try {
   `;
   counts.private_files = storage.count;
   const [auth] = await sql`select count(*)::integer as count from auth.users`;
-  console.log(JSON.stringify({ mode: "read-only-audit", counts, authUsers: auth.count }, null, 2));
+  const finance = await sql`
+    select
+      (select coalesce(sum(total_cents), 0)::bigint from public.sales where status <> 'CANCELLED') as sales_cents,
+      (select coalesce(sum(total_cost_cents), 0)::bigint from public.sales where status <> 'CANCELLED') as sold_cost_cents,
+      (select coalesce(sum(total_cost_cents), 0)::bigint from public.raw_material_purchases where status = 'CONFIRMED') as purchases_cents,
+      (select coalesce(sum(amount_cents), 0)::bigint from public.expenses where record_status = 'CONFIRMED' and raw_material_purchase_id is null) as general_expenses_cents,
+      (select coalesce(sum(amount_cents), 0)::bigint from public.expenses where record_status = 'CONFIRMED' and raw_material_purchase_id is not null) as purchase_linked_expenses_cents
+  `;
+  const combos = existing.has("combos") ? await sql`
+    select c.id, cb.code, cb.name, c.active, p.active as product_active
+    from public.combos c
+    join public.products p on p.id = c.product_id
+    join public.code_base cb on cb.id = p.code_base_id
+    order by c.id
+  ` : [];
+  const policies = await sql`
+    select schemaname, tablename, policyname, roles, cmd
+    from pg_catalog.pg_policies
+    where schemaname in ('public', 'storage')
+    order by schemaname, tablename, policyname
+  `;
+  console.log(JSON.stringify({
+    mode: "read-only-audit",
+    counts,
+    authUsers: auth.count,
+    finance: finance[0],
+    combos,
+    policies,
+  }, null, 2));
 } finally {
   await sql.end({ timeout: 5 });
 }

@@ -3,6 +3,7 @@ import { getKhoraUser } from "@/lib/supabase/auth";
 import { categoryPrefix, convertUnit, normalizePrefix, normalizeUnit, suggestMaterialCode, weightedAverageCost } from "../../khora-inventory";
 import { allocateFinishedStockFIFO, type FinishedLot } from "../../khora-fifo";
 import { buildKhoraPdf } from "../../khora-pdf";
+import { calculateFinanceTotals } from "../../khora-finance-core";
 import { createWithGeneratedCode, createWithSequentialCode, nextSequentialCode, type SequentialCodeKind } from "../../khora-codes";
 type Body=Record<string,unknown>;
 type NRow=Record<string,number|string|null>;
@@ -124,6 +125,7 @@ const views:Record<string,string>={
 export async function GET(request:Request){try{
  const user=await getKhoraUser();if(!user)return fail("No autorizado",401);
  const url=new URL(request.url),entity=url.searchParams.get("entity")||"summary";
+ if(entity==="finance_summary")return ok(await financeSummary(s(url.searchParams.get("month"))||new Date().toISOString().slice(0,7)));
  if(entity==="next_code"){const kind=s(url.searchParams.get("kind")).toUpperCase()==="COMBO"?"COMBO":"PRODUCT";return ok({kind,code:nextSequentialCode(await listDefinitionCodes(kind),kind)})}
  if(entity==="next_material_code"){const categoryId=n(url.searchParams.get("categoryId")),category=await getMaterialCategory(categoryId);if(!category)return fail("Elegí una categoría de materia prima activa");const prefix=normalizePrefix(s(category.prefix));return ok({categoryId,prefix,code:suggestMaterialCode(prefix,await listMaterialCodes(prefix))})}
  if(entity==="summary"){const r=await db().batch([db().prepare("SELECT COALESCE(SUM(total_cents),0) value FROM sales WHERE status<>'CANCELLED'"),db().prepare("SELECT COALESCE(SUM(amount_cents),0) value FROM expenses WHERE record_status<>'CANCELLED'"),db().prepare("SELECT COUNT(*) value FROM products WHERE active=1 AND current_stock<=minimum_stock"),db().prepare("SELECT COUNT(*) value FROM raw_materials WHERE active=1 AND current_stock<=minimum_stock")]);return ok({sales:r[0].results[0]?.value??0,expenses:r[1].results[0]?.value??0,lowProducts:r[2].results[0]?.value??0,lowMaterials:r[3].results[0]?.value??0})}
@@ -167,9 +169,107 @@ export async function GET(request:Request){try{
  if(!views[entity])return fail("Módulo desconocido",404);return ok({rows:(await db().prepare(views[entity]).all()).results});
 }catch(e){return fail(e,500)}}
 
-async function refreshProfits(){const month=new Date().toISOString().slice(0,7);await db().batch([db().prepare("INSERT INTO profit_history(month,sales_cents,product_cost_cents,expense_cents,profit_cents,reason) SELECT month,sales_cents,product_cost_cents,expense_cents,profit_cents,'RECALCULATION' FROM monthly_profits WHERE month=?").bind(month),db().prepare("INSERT INTO monthly_profits(month,sales_cents,product_cost_cents,expense_cents,profit_cents,calculated_at) SELECT ?,COALESCE((SELECT SUM(total_cents) FROM sales WHERE status<>'CANCELLED' AND substr(sold_at,1,7)=?),0),COALESCE((SELECT SUM(total_cost_cents) FROM sales WHERE status<>'CANCELLED' AND substr(sold_at,1,7)=?),0),COALESCE((SELECT SUM(amount_cents) FROM expenses WHERE record_status<>'CANCELLED' AND substr(incurred_at,1,7)=?),0),0,CURRENT_TIMESTAMP ON CONFLICT(month) DO UPDATE SET sales_cents=excluded.sales_cents,product_cost_cents=excluded.product_cost_cents,expense_cents=excluded.expense_cents,calculated_at=CURRENT_TIMESTAMP").bind(month,month,month,month),db().prepare("UPDATE monthly_profits SET profit_cents=sales_cents-product_cost_cents-expense_cents WHERE month=?").bind(month)])}
+async function refreshProfits(){const month=new Date().toISOString().slice(0,7);await db().batch([db().prepare("INSERT INTO profit_history(month,sales_cents,product_cost_cents,expense_cents,profit_cents,reason) SELECT month,sales_cents,product_cost_cents,expense_cents,profit_cents,'RECALCULATION' FROM monthly_profits WHERE month=?").bind(month),db().prepare("INSERT INTO monthly_profits(month,sales_cents,product_cost_cents,expense_cents,profit_cents,calculated_at) SELECT ?,COALESCE((SELECT SUM(total_cents) FROM sales WHERE status<>'CANCELLED' AND substr(sold_at,1,7)=?),0),COALESCE((SELECT SUM(total_cost_cents) FROM sales WHERE status<>'CANCELLED' AND substr(sold_at,1,7)=?),0),COALESCE((SELECT SUM(amount_cents) FROM expenses WHERE record_status<>'CANCELLED' AND raw_material_purchase_id IS NULL AND substr(incurred_at,1,7)=?),0),0,CURRENT_TIMESTAMP ON CONFLICT(month) DO UPDATE SET sales_cents=excluded.sales_cents,product_cost_cents=excluded.product_cost_cents,expense_cents=excluded.expense_cents,calculated_at=CURRENT_TIMESTAMP").bind(month,month,month,month),db().prepare("UPDATE monthly_profits SET profit_cents=sales_cents-product_cost_cents-expense_cents WHERE month=?").bind(month)])}
+
+const monthBounds=(month:string)=>{
+ if(!/^\d{4}-\d{2}$/.test(month))throw new Error("Mes inválido");
+ const start=`${month}-01`,nextDate=new Date(`${start}T12:00:00Z`);nextDate.setUTCMonth(nextDate.getUTCMonth()+1);
+ return {start,next:nextDate.toISOString().slice(0,10)};
+};
+
+async function financeSummary(month:string){
+ const {start,next}=monthBounds(month);
+ const result=await db().batch([
+  db().prepare(`WITH period_sales AS (
+    SELECT s.id,s.total_cents,s.total_cost_cents,s.payment_status
+    FROM sales s WHERE s.status<>'CANCELLED' AND CAST(s.sold_at AS DATE)>=CAST(? AS DATE) AND CAST(s.sold_at AS DATE)<CAST(? AS DATE)
+   ), paid AS (
+    SELECT p.sale_id,COALESCE(SUM(p.amount_cents),0) amount
+    FROM payments p WHERE p.direction='IN' AND p.status='CONFIRMED' AND CAST(p.paid_at AS DATE)<CAST(? AS DATE)
+    GROUP BY p.sale_id
+   ) SELECT COALESCE(SUM(ps.total_cents),0) sales_generated_cents,
+    COALESCE(SUM(ps.total_cost_cents),0) sold_cost_cents,
+    COALESCE(SUM(LEAST(ps.total_cents,CASE WHEN paid.sale_id IS NULL AND ps.payment_status='PAID' THEN ps.total_cents ELSE COALESCE(paid.amount,0) END)),0) collected_cents
+   FROM period_sales ps LEFT JOIN paid ON paid.sale_id=ps.id`).bind(start,next,next),
+  db().prepare(`SELECT COALESCE(SUM(amount),0) cash_income_cents FROM (
+    SELECT p.amount_cents amount FROM payments p WHERE p.direction='IN' AND p.status='CONFIRMED' AND CAST(p.paid_at AS DATE)>=CAST(? AS DATE) AND CAST(p.paid_at AS DATE)<CAST(? AS DATE)
+    UNION ALL
+    SELECT s.total_cents FROM sales s WHERE s.status<>'CANCELLED' AND s.payment_status='PAID'
+      AND CAST(s.sold_at AS DATE)>=CAST(? AS DATE) AND CAST(s.sold_at AS DATE)<CAST(? AS DATE)
+      AND NOT EXISTS(SELECT 1 FROM payments p WHERE p.sale_id=s.id AND p.direction='IN' AND p.status='CONFIRMED')
+   ) cash_rows`).bind(start,next,start,next),
+  db().prepare(`WITH period_purchases AS (
+    SELECT rp.id,rp.total_cost_cents,rp.payment_status FROM raw_material_purchases rp
+    WHERE rp.status='CONFIRMED' AND CAST(rp.purchased_at AS DATE)>=CAST(? AS DATE) AND CAST(rp.purchased_at AS DATE)<CAST(? AS DATE)
+   ), paid AS (
+    SELECT fpe.raw_material_purchase_id,COALESCE(SUM(fpe.amount_cents),0) amount FROM financial_payment_events fpe
+    WHERE fpe.event_type='PURCHASE_PAYMENT' AND fpe.status='CONFIRMED' AND CAST(fpe.paid_at AS DATE)<CAST(? AS DATE)
+    GROUP BY fpe.raw_material_purchase_id
+   ) SELECT COALESCE(SUM(pp.total_cost_cents),0) purchases_cents,
+    COALESCE(SUM(LEAST(pp.total_cost_cents,CASE WHEN paid.raw_material_purchase_id IS NULL AND pp.payment_status='PAID' THEN pp.total_cost_cents ELSE COALESCE(paid.amount,0) END)),0) purchases_paid_cents
+   FROM period_purchases pp LEFT JOIN paid ON paid.raw_material_purchase_id=pp.id`).bind(start,next,next),
+  db().prepare(`SELECT COALESCE(SUM(amount),0) purchases_cash_paid_cents FROM (
+    SELECT fpe.amount_cents amount FROM financial_payment_events fpe
+    WHERE fpe.event_type='PURCHASE_PAYMENT' AND fpe.status='CONFIRMED' AND CAST(fpe.paid_at AS DATE)>=CAST(? AS DATE) AND CAST(fpe.paid_at AS DATE)<CAST(? AS DATE)
+    UNION ALL
+    SELECT rp.total_cost_cents FROM raw_material_purchases rp WHERE rp.status='CONFIRMED' AND rp.payment_status='PAID'
+      AND CAST(rp.purchased_at AS DATE)>=CAST(? AS DATE) AND CAST(rp.purchased_at AS DATE)<CAST(? AS DATE)
+      AND NOT EXISTS(SELECT 1 FROM financial_payment_events fpe WHERE fpe.raw_material_purchase_id=rp.id AND fpe.status='CONFIRMED')
+   ) cash_rows`).bind(start,next,start,next),
+  db().prepare(`WITH period_expenses AS (
+    SELECT e.id,e.amount_cents,e.payment_status FROM expenses e
+    WHERE e.record_status='CONFIRMED' AND e.raw_material_purchase_id IS NULL
+      AND CAST(e.incurred_at AS DATE)>=CAST(? AS DATE) AND CAST(e.incurred_at AS DATE)<CAST(? AS DATE)
+   ), paid AS (
+    SELECT fpe.expense_id,COALESCE(SUM(fpe.amount_cents),0) amount FROM financial_payment_events fpe
+    WHERE fpe.event_type='EXPENSE_PAYMENT' AND fpe.status='CONFIRMED' AND CAST(fpe.paid_at AS DATE)<CAST(? AS DATE)
+    GROUP BY fpe.expense_id
+   ) SELECT COALESCE(SUM(pe.amount_cents),0) expenses_cents,
+    COALESCE(SUM(LEAST(pe.amount_cents,CASE WHEN paid.expense_id IS NULL AND pe.payment_status='PAID' THEN pe.amount_cents ELSE COALESCE(paid.amount,0) END)),0) expenses_paid_cents
+   FROM period_expenses pe LEFT JOIN paid ON paid.expense_id=pe.id`).bind(start,next,next),
+  db().prepare(`SELECT COALESCE(SUM(amount),0) expenses_cash_paid_cents FROM (
+    SELECT fpe.amount_cents amount FROM financial_payment_events fpe
+    WHERE fpe.event_type='EXPENSE_PAYMENT' AND fpe.status='CONFIRMED' AND CAST(fpe.paid_at AS DATE)>=CAST(? AS DATE) AND CAST(fpe.paid_at AS DATE)<CAST(? AS DATE)
+    UNION ALL
+    SELECT e.amount_cents FROM expenses e WHERE e.record_status='CONFIRMED' AND e.payment_status='PAID' AND e.raw_material_purchase_id IS NULL
+      AND CAST(e.incurred_at AS DATE)>=CAST(? AS DATE) AND CAST(e.incurred_at AS DATE)<CAST(? AS DATE)
+      AND NOT EXISTS(SELECT 1 FROM financial_payment_events fpe WHERE fpe.expense_id=e.id AND fpe.status='CONFIRMED')
+   ) cash_rows`).bind(start,next,start,next),
+  db().prepare("SELECT mode,percent_value,fixed_amount_cents,reserved_amount_cents FROM reinvestment_plans WHERE month=?").bind(month),
+  db().prepare("SELECT COALESCE(SUM(amount_cents),0) reinvested_cents FROM reinvestment_movements WHERE month=? AND status='CONFIRMED'").bind(month),
+  db().prepare("SELECT id,status,closed_at FROM monthly_finance_closures WHERE month=?").bind(month)
+ ]);
+ const sales=result[0].results[0] as NRow,cash=result[1].results[0] as NRow,purchases=result[2].results[0] as NRow,purchaseCash=result[3].results[0] as NRow,expenses=result[4].results[0] as NRow,expenseCash=result[5].results[0] as NRow,plan=result[6].results[0] as NRow|undefined,movement=result[7].results[0] as NRow,closure=result[8].results[0] as NRow|undefined;
+ const totals=calculateFinanceTotals({salesGeneratedCents:n(sales.sales_generated_cents),collectedCents:n(sales.collected_cents),purchasesCents:n(purchases.purchases_cents),purchasesPaidCents:n(purchases.purchases_paid_cents),expensesCents:n(expenses.expenses_cents),expensesPaidCents:n(expenses.expenses_paid_cents),cashIncomeCents:n(cash.cash_income_cents),cashOutgoingCents:n(purchaseCash.purchases_cash_paid_cents)+n(expenseCash.expenses_cash_paid_cents),soldCostCents:n(sales.sold_cost_cents),reinvestmentReservedCents:n(plan?.reserved_amount_cents),reinvestedCents:n(movement.reinvested_cents)});
+ return {month,salesGeneratedCents:totals.salesGeneratedCents,collectedCents:totals.collectedCents,receivableCents:totals.receivableCents,purchasesCents:totals.purchasesCents,purchasesPaidCents:totals.purchasesPaidCents,purchasesPendingCents:totals.purchasesPendingCents,expensesCents:totals.expensesCents,expensesPaidCents:totals.expensesPaidCents,expensesPendingCents:totals.expensesPendingCents,totalOutgoingsRegisteredCents:totals.totalOutgoingsRegisteredCents,cashIncomeCents:totals.cashIncomeCents,cashOutgoingCents:totals.cashOutgoingCents,cashResultCents:totals.cashResultCents,soldCostCents:totals.soldCostCents,grossProfitCents:totals.grossProfitCents,netProfitCents:totals.netProfitCents,reinvestment:{mode:plan?.mode??null,percentValue:plan?.percent_value===null||plan?.percent_value===undefined?null:n(plan.percent_value),fixedAmountCents:plan?.fixed_amount_cents===null||plan?.fixed_amount_cents===undefined?null:n(plan.fixed_amount_cents),reservedCents:totals.reinvestmentReservedCents,reinvestedCents:totals.reinvestedCents,availableCents:totals.reinvestmentAvailableCents},availableProfitCents:totals.availableProfitCents,closure:closure?{id:n(closure.id),status:s(closure.status),closedAt:s(closure.closed_at)}:null};
+}
 
 export async function POST(request:Request){try{const user=await getKhoraUser();if(!user)return fail("No autorizado",401);const b=await request.json() as Body,action=s(b.action),actorEmail=user.email??"sistema";
+ if(action==="save_reinvestment_plan"){
+  const month=required(b.month,"El período"),mode=s(b.mode).toUpperCase();if(!["PERCENT","FIXED"].includes(mode))throw new Error("Elegí porcentaje o monto fijo");
+  const current=await financeSummary(month);if(current.closure?.status==="CLOSED")throw new Error("Este período está cerrado. Reabrilo antes de modificar la reinversión.");
+  if(current.netProfitCents<=0)throw new Error("No hay ganancia disponible para reinvertir en este período.");
+  const percent=mode==="PERCENT"?n(b.percentValue):null,fixed=mode==="FIXED"?Math.round(n(b.fixedAmountCents)):null;
+  if(mode==="PERCENT"&&(percent===null||percent<0||percent>100))throw new Error("El porcentaje debe estar entre 0 y 100");
+  if(mode==="FIXED"&&(fixed===null||fixed<0||fixed>current.netProfitCents))throw new Error("La reinversión no puede superar la ganancia neta");
+  const reserved=mode==="PERCENT"?Math.round(current.netProfitCents*n(percent)/100):n(fixed);
+  await db().batch([db().prepare("INSERT INTO reinvestment_plans(month,mode,percent_value,fixed_amount_cents,reserved_amount_cents,updated_by) VALUES(?,?,?,?,?,?) ON CONFLICT(month) DO UPDATE SET mode=excluded.mode,percent_value=excluded.percent_value,fixed_amount_cents=excluded.fixed_amount_cents,reserved_amount_cents=excluded.reserved_amount_cents,updated_by=excluded.updated_by,updated_at=CURRENT_TIMESTAMP").bind(month,mode,percent,fixed,reserved,actorEmail),db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('UPDATE','REINVESTMENT',NULL,?,?,?)").bind(actorEmail,`Reinversión ${month} actualizada`,JSON.stringify({month,mode,percentValue:percent,fixedAmountCents:fixed,reservedAmountCents:reserved}))]);
+  return ok({ok:true,summary:await financeSummary(month)});
+ }
+ if(action==="save_reinvestment_movement"){
+  const month=required(b.month,"El período"),occurredAt=required(b.occurredAt,"La fecha"),concept=required(b.concept,"El concepto"),category=required(b.category,"La categoría"),amount=Math.round(n(b.amountCents));monthBounds(month);if(amount<=0)throw new Error("El monto debe ser mayor que cero");
+  const current=await financeSummary(month);if(current.closure?.status==="CLOSED")throw new Error("Este período está cerrado. Reabrilo antes de registrar movimientos.");if(current.reinvestment.reservedCents<=0)throw new Error("Primero definí un fondo de reinversión");if(current.reinvestment.reinvestedCents+amount>current.reinvestment.reservedCents)throw new Error("El movimiento supera el fondo disponible para reinvertir");
+  const purchaseId=b.rawMaterialPurchaseId?n(b.rawMaterialPurchaseId):null,expenseId=b.expenseId?n(b.expenseId):null;if(purchaseId&&expenseId)throw new Error("La reinversión solo puede vincularse a una compra o a un gasto");
+  if(purchaseId&&!await db().prepare("SELECT id FROM raw_material_purchases WHERE id=? AND status='CONFIRMED'").bind(purchaseId).first())throw new Error("La compra asociada no existe");if(expenseId&&!await db().prepare("SELECT id FROM expenses WHERE id=? AND record_status='CONFIRMED'").bind(expenseId).first())throw new Error("El gasto asociado no existe");
+  const operationKey=uid();await db().batch([db().prepare("INSERT INTO reinvestment_movements(operation_key,month,occurred_at,concept,category,amount_cents,raw_material_purchase_id,expense_id,notes,created_by) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(operationKey,month,occurredAt,concept,category,amount,purchaseId,expenseId,s(b.notes)||null,actorEmail),db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','REINVESTMENT',NULL,?,?,?)").bind(actorEmail,`Reinversión registrada: ${concept}`,JSON.stringify({operationKey,month,amountCents:amount,purchaseId,expenseId}))]);return ok({ok:true,summary:await financeSummary(month)});
+ }
+ if(action==="close_finance_month"){
+  const month=required(b.month,"El período"),summary=await financeSummary(month);if(summary.closure?.status==="CLOSED")throw new Error("Este período ya está cerrado");
+  await db().batch([db().prepare(`INSERT INTO monthly_finance_closures(month,sales_generated_cents,collected_cents,receivable_cents,purchases_cents,purchases_paid_cents,purchases_pending_cents,expenses_cents,expenses_paid_cents,expenses_pending_cents,sold_cost_cents,gross_profit_cents,net_profit_cents,cash_income_cents,cash_outgoing_cents,cash_result_cents,reinvestment_mode,reinvestment_percent,reinvestment_fixed_cents,reinvestment_reserved_cents,reinvested_cents,reinvestment_available_cents,available_profit_cents,closed_by,status,snapshot_json,reopened_at,reopened_by,closed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'CLOSED',?,NULL,NULL,CURRENT_TIMESTAMP) ON CONFLICT(month) DO UPDATE SET sales_generated_cents=excluded.sales_generated_cents,collected_cents=excluded.collected_cents,receivable_cents=excluded.receivable_cents,purchases_cents=excluded.purchases_cents,purchases_paid_cents=excluded.purchases_paid_cents,purchases_pending_cents=excluded.purchases_pending_cents,expenses_cents=excluded.expenses_cents,expenses_paid_cents=excluded.expenses_paid_cents,expenses_pending_cents=excluded.expenses_pending_cents,sold_cost_cents=excluded.sold_cost_cents,gross_profit_cents=excluded.gross_profit_cents,net_profit_cents=excluded.net_profit_cents,cash_income_cents=excluded.cash_income_cents,cash_outgoing_cents=excluded.cash_outgoing_cents,cash_result_cents=excluded.cash_result_cents,reinvestment_mode=excluded.reinvestment_mode,reinvestment_percent=excluded.reinvestment_percent,reinvestment_fixed_cents=excluded.reinvestment_fixed_cents,reinvestment_reserved_cents=excluded.reinvestment_reserved_cents,reinvested_cents=excluded.reinvested_cents,reinvestment_available_cents=excluded.reinvestment_available_cents,available_profit_cents=excluded.available_profit_cents,closed_by=excluded.closed_by,status='CLOSED',snapshot_json=excluded.snapshot_json,reopened_at=NULL,reopened_by=NULL,closed_at=CURRENT_TIMESTAMP`).bind(month,summary.salesGeneratedCents,summary.collectedCents,summary.receivableCents,summary.purchasesCents,summary.purchasesPaidCents,summary.purchasesPendingCents,summary.expensesCents,summary.expensesPaidCents,summary.expensesPendingCents,summary.soldCostCents,summary.grossProfitCents,summary.netProfitCents,summary.cashIncomeCents,summary.cashOutgoingCents,summary.cashResultCents,summary.reinvestment.mode,summary.reinvestment.percentValue,summary.reinvestment.fixedAmountCents,summary.reinvestment.reservedCents,summary.reinvestment.reinvestedCents,summary.reinvestment.availableCents,summary.availableProfitCents,actorEmail,JSON.stringify(summary)),db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CLOSE','FINANCE_MONTH',NULL,?,?,?)").bind(actorEmail,`Cierre financiero ${month}`,JSON.stringify(summary))]);return ok({ok:true,summary:await financeSummary(month)});
+ }
+ if(action==="reopen_finance_month"){
+  const month=required(b.month,"El período");monthBounds(month);const close=await db().prepare("SELECT id,status FROM monthly_finance_closures WHERE month=?").bind(month).first<NRow>();if(!close||close.status!=="CLOSED")throw new Error("El período no tiene un cierre activo");await db().batch([db().prepare("UPDATE monthly_finance_closures SET status='REOPENED',reopened_at=CURRENT_TIMESTAMP,reopened_by=? WHERE month=?").bind(actorEmail,month),db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary) VALUES('REOPEN','FINANCE_MONTH',?,?,?)").bind(close.id,actorEmail,`Período ${month} reabierto`)]);return ok({ok:true,summary:await financeSummary(month)});
+ }
  if(action==="save_product_image"){const productId=n(b.productId),path=required(b.path,"La ruta de la imagen");if(!productId||!path.startsWith(`products/${productId}/`))throw new Error("La ruta de la imagen no es válida");const product=await db().prepare("SELECT id FROM products WHERE id=?").bind(productId).first<NRow>();if(!product)throw new Error("Producto inexistente");await db().prepare("INSERT INTO app_settings(key,value_json,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP").bind(`product_image_${productId}`,path).run();return ok({ok:true,path})}
  if(action==="save_contact"){const table=b.kind==="supplier"?"suppliers":"clients",name=required(b.name,"El nombre");if(table==="clients"){const priceListId=b.priceListId?n(b.priceListId):null;if(b.id)await db().prepare("UPDATE clients SET name=?,phone=?,email=?,address=?,price_list_id=?,active=? WHERE id=?").bind(name,s(b.phone)||null,s(b.email)||null,s(b.address)||null,priceListId,b.active===false?0:1,n(b.id)).run();else await db().prepare("INSERT INTO clients(code,name,phone,email,address,price_list_id) VALUES(?,?,?,?,?,COALESCE(?,(SELECT id FROM price_lists WHERE is_default=1 LIMIT 1)))").bind(code("CLI"),name,s(b.phone)||null,s(b.email)||null,s(b.address)||null,priceListId).run()}else if(b.id)await db().prepare("UPDATE suppliers SET name=?,phone=?,email=?,address=?,active=? WHERE id=?").bind(name,s(b.phone)||null,s(b.email)||null,s(b.address)||null,b.active===false?0:1,n(b.id)).run();else await db().prepare("INSERT INTO suppliers(code,name,phone,email,address) VALUES(?,?,?,?,?)").bind(code("PRO"),name,s(b.phone)||null,s(b.email)||null,s(b.address)||null).run();return ok()}
  if(action==="save_price_list"){const name=required(b.name,"El nombre"),visible=required(b.code,"El código").toUpperCase(),modifier=n(b.priceModifier);if(modifier<=0||modifier>3)throw new Error("El modificador debe ser mayor que 0 y menor o igual que 3");if(b.id)await db().prepare("UPDATE price_lists SET code=?,name=?,price_modifier=?,active=? WHERE id=?").bind(visible,name,modifier,b.active===false?0:1,n(b.id)).run();else await db().prepare("INSERT INTO price_lists(code,name,price_modifier,is_default) VALUES(?,?,?,0)").bind(visible,name,modifier).run();return ok()}
