@@ -198,7 +198,10 @@ test("la Fase 4 centraliza caja y cierre mensual sin duplicar contabilidad", asy
 test("caja usa fechas efectivas y evita duplicar compras vinculadas a gastos", async () => {
   const route = await read("app/api/khora/route.ts");
   assert.match(route, /p\.paid_at occurred_at/);
-  assert.match(route, /NOT EXISTS\(SELECT 1 FROM expenses e WHERE e\.raw_material_purchase_id=rp\.id/);
+  assert.match(route, /e\.raw_material_purchase_id IS NULL/);
+  assert.match(route, /financial_payment_events/);
+  assert.match(route, /PURCHASE_PAYMENT/);
+  assert.match(route, /EXPENSE_PAYMENT/);
   assert.match(route, /frozen_unit_price_cents/);
   assert.match(route, /frozen_unit_cost_cents/);
 });
