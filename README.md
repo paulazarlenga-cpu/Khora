@@ -12,7 +12,7 @@ Sistema interno de gestión para un emprendimiento de productos aromáticos y de
 - Modelo persistente para pagos, envíos, remitos, compras con múltiples ítems y auditoría.
 - Diseño responsive para computadora, tablet y celular.
 
-La interfaz utiliza datos ficticios realistas mientras se completa la conexión con las cuentas de producción. La API y el esquema D1 existentes se conservan como entorno local de desarrollo. La migración final a Supabase/PostgreSQL se realizará al crear el proyecto externo.
+La interfaz conserva datos ficticios realistas en las secciones que todavía no tienen carga productiva. La API ya utiliza PostgreSQL mediante el Transaction pooler de Supabase.
 
 ## Desarrollo local
 
@@ -20,33 +20,35 @@ Requiere Node.js 22.13 o posterior.
 
 ```bash
 pnpm install
+Copy-Item .env.example .env.local
 pnpm dev
 ```
+
+Completá `DATABASE_URL` en `.env.local` con la conexión privada de Supabase. El archivo local está excluido de Git.
 
 ## Verificación
 
 ```bash
 pnpm lint
 pnpm test
+pnpm check:db
 ```
 
 `pnpm test` compila la aplicación y verifica las áreas principales, el modelo relacional, los flujos auditables y la adaptación responsive.
 
 ## Datos y migraciones
 
-- Esquema Drizzle: `db/schema.ts`.
-- Migraciones actuales: `drizzle/0001_*.sql` a `drizzle/0015_*.sql`.
-- Acceso actual: binding D1 `DB`, declarado en `.openai/hosting.json`.
+- Esquema histórico D1/SQLite: `db/schema.ts` y `drizzle/0001_*.sql` a `drizzle/0015_*.sql`.
+- Migración consolidada de producción: `supabase/migrations/202608200001_khora_initial.sql`.
+- Acceso de producción: PostgreSQL de Supabase mediante `DATABASE_URL` y consultas preparadas desactivadas para compatibilidad con el Transaction pooler.
+- Las 39 tablas públicas tienen Row Level Security habilitado y no exponen políticas anónimas.
 - No se usan `localStorage` ni `sessionStorage` como fuente de verdad.
 
 No aplicar migraciones destructivas ni importar información real sin una copia de seguridad y aprobación explícita.
 
-## Próxima conexión externa
+## Próximos pasos de producción
 
-Cuando estén disponibles las sesiones de la cuenta administradora de la dueña:
-
-1. Crear o vincular el repositorio de GitHub.
-2. Crear el proyecto de Supabase y convertir el esquema SQLite a PostgreSQL.
-3. Configurar autenticación y variables de entorno.
-4. Importar primero datos de prueba y validar reglas de stock/costos.
-5. Desplegar en Vercel.
+1. Configurar Supabase Auth y Storage.
+2. Retirar los datos ficticios restantes o reemplazarlos por carga real.
+3. Configurar `DATABASE_URL` en Vercel.
+4. Importar datos, validar stock/costos y desplegar.

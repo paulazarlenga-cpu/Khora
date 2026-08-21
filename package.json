@@ -10,6 +10,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
+    "check:db": "node scripts/check-supabase.mjs",
     "test": "vinext build && node --test tests/khora-structure.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work/site-package-stage/dist",
     "db:generate": "drizzle-kit generate"
@@ -17,6 +18,7 @@
   "dependencies": {
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
+    "postgres": "3.4.7",
     "react": "19.2.6",
     "react-dom": "19.2.6"
   },
