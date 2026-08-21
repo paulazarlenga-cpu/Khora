@@ -43,3 +43,20 @@ test("una pérdida no permite reservar reinversión de ganancias", () => {
   assert.equal(result.reinvestmentReservedCents, 0);
   assert.equal(result.availableProfitCents, -4_000);
 });
+
+test("sin plan de reinversión toda la ganancia neta queda disponible", () => {
+  const result = calculateFinanceTotals({
+    salesGeneratedCents: 2_000_000,
+    collectedCents: 0,
+    purchasesCents: 4_000_000,
+    purchasesPaidCents: 4_000_000,
+    expensesCents: 0,
+    expensesPaidCents: 0,
+    cashIncomeCents: 0,
+    cashOutgoingCents: 4_000_000,
+    soldCostCents: 200_000,
+  });
+  assert.equal(result.netProfitCents, 1_800_000);
+  assert.equal(result.reinvestmentReservedCents, 0);
+  assert.equal(result.availableProfitCents, 1_800_000);
+});

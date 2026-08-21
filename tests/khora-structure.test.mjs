@@ -664,6 +664,10 @@ test("finanzas compara cierres inmutables y permite exportar reportes reales", a
   assert.match(sections, /function FinanceReports/);
   assert.match(sections, /Imprimir \/ PDF/);
   assert.match(sections, /Exportar CSV/);
+  assert.match(sections, /kind: "sale"/);
+  assert.match(sections, /Registrar cobro/);
+  assert.match(sections, /action: "register_payment"/);
+  assert.match(sections, /khora:data-changed/);
   assert.match(styles, /\.finance-comparison-selectors/);
 });
 
@@ -701,4 +705,29 @@ test("productos y combos se editan o archivan sin alterar el historial", async (
   assert.match(sections, /Código estable · no se modifica/);
   assert.match(sections, /function DefinitionArchiveDialog/);
   assert.match(sections, /Se conservarán el código, el stock actual, los lotes, las ventas y todos los costos históricos/);
+});
+
+test("las ventas directas se editan o anulan con reversión transaccional y trazabilidad", async () => {
+  const [route, sections, styles] = await Promise.all([read("app/api/khora/route.ts"), read("app/khora-sections.tsx"), read("app/globals.css")]);
+  assert.match(route, /finishedFifoPlanForSaleEdit/);
+  assert.match(route, /entity==="sale_definition"/);
+  assert.match(route, /FROM audit_logs WHERE entity_type='SALE' AND entity_id=/);
+  assert.match(route, /FROM sale_documents WHERE sale_id=/);
+  assert.match(route, /action==="update_sale"/);
+  assert.match(route, /Reversión por edición de venta/);
+  assert.match(route, /DELETE FROM finished_stock_allocations/);
+  assert.match(route, /Venta reasignada después de edición/);
+  assert.match(route, /action==="cancel_sale_full"/);
+  assert.match(route, /UPDATE payments SET status='CANCELLED'/);
+  assert.match(route, /Venta V-\$\{id\} anulada con reversión de stock y lotes/);
+  assert.match(route, /monthly_finance_closures WHERE status='CLOSED'/);
+  assert.match(sections, /action: sale \? "update_sale" : "sale"/);
+  assert.match(sections, /Disponible para esta edición/);
+  assert.match(sections, /function SaleCancelDialog/);
+  assert.match(sections, /function SaleDetailDialog/);
+  assert.match(sections, /Detalle económico, cobros, documentos e historial de cambios/);
+  assert.match(sections, /Anular venta/);
+  assert.match(styles, /\.sale-row-actions/);
+  assert.match(styles, /\.sale-edit-payment/);
+  assert.match(styles, /\.sale-detail-summary/);
 });
