@@ -20,6 +20,8 @@ export default function Home() {
   const [mobileNav, setMobileNav] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [profilePanel, setProfilePanel] = useState<"settings" | "profile" | null>(null);
+  const [userEmail, setUserEmail] = useState("paulazarlenga@gmail.com");
   const [globalQuery, setGlobalQuery] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
@@ -65,6 +67,8 @@ export default function Home() {
     window.addEventListener("keydown", onShortcut);
     return () => window.removeEventListener("keydown", onShortcut);
   }, []);
+
+  useEffect(() => { let active = true; createSupabaseClient().auth.getUser().then(({ data }) => { if (active && data.user?.email) setUserEmail(data.user.email); }).catch(() => undefined); return () => { active = false; }; }, []);
 
   useEffect(() => {
     function closeNavGroup(event: PointerEvent) {
@@ -112,7 +116,7 @@ export default function Home() {
     <header className="desktop-navbar">
       <button className="navbar-brand" onClick={() => goTo("inicio")} aria-label="Ir al inicio de KHORA"><span className="brand-mark">K</span><span><strong>KHORA</strong><small>Gestión simple</small></span></button>
       <nav ref={primaryNavRef} className="horizontal-nav" aria-label="Navegación principal">{primaryNavigation.map((item) => { const active = isPrimaryActive(item); if (item.type === "link") return <button key={item.id} className={active ? "active" : ""} onClick={() => goTo(item.id)} title={item.label}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "pedidos" && pendingOrderCount > 0 && <b className="nav-count">{pendingOrderCount}</b>}</button>; const expanded = openNavGroup === item.id; return <div className={`top-nav-group ${active ? "has-active" : ""}`} key={item.id}><button className={active ? "active" : ""} onClick={() => setOpenNavGroup((current) => current === item.id ? null : item.id)} aria-haspopup="menu" aria-expanded={expanded} title={item.label}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span><i className="nav-chevron" aria-hidden="true"><KhoraIcon name="chevron-down" /></i>{item.id === "produccion" && productionAttention && <b className="nav-alert">!</b>}</button>{expanded && <div className="top-nav-menu" role="menu" aria-label={item.label}>{item.children.map((child) => <button key={child.id} role="menuitem" className={section === child.id ? "selected" : ""} onClick={() => goTo(child.id)}><KhoraIcon name={child.icon} /><span>{child.label}</span>{child.id === "stock" && lowMaterialCount > 0 && <b className="nav-alert">!</b>}</button>)}</div>}</div>; })}</nav>
-      <div className="navbar-user"><div className="profile-wrap"><button className="navbar-profile" onClick={() => setProfileOpen((value) => !value)} aria-expanded={profileOpen}><span className="avatar">PZ</span><span><strong>Paula</strong><small>Administradora</small></span><i><KhoraIcon name="chevron-down" /></i></button>{profileOpen && <div className="profile-menu"><button><KhoraIcon name={moduleIcons.configuracion} /> Configuración</button><button>◌ Mi perfil</button><button onClick={signOut}>Cerrar sesión</button></div>}</div></div>
+      <div className="navbar-user"><div className="profile-wrap"><button className="navbar-profile" onClick={() => setProfileOpen((value) => !value)} aria-expanded={profileOpen}><span className="avatar">PZ</span><span><strong>Paula</strong><small>Administradora</small></span><i><KhoraIcon name="chevron-down" /></i></button>{profileOpen && <div className="profile-menu"><button onClick={() => { setProfileOpen(false); setProfilePanel("settings"); }}><KhoraIcon name={moduleIcons.configuracion} /> Configuración</button><button onClick={() => { setProfileOpen(false); setProfilePanel("profile"); }}><KhoraIcon name="users" /> Mi perfil</button><button onClick={signOut}>Cerrar sesión</button></div>}</div></div>
     </header>
     <aside className={`sidebar ${mobileNav ? "is-open" : ""}`} aria-label="Navegación principal">
       <div className="brand-block"><div className="brand-mark" aria-hidden="true">K</div><div><strong>KHORA</strong><span>Gestión simple</span></div><button className="sidebar-close" onClick={() => setMobileNav(false)} aria-label="Cerrar menú">×</button></div>
@@ -131,7 +135,14 @@ export default function Home() {
       </main>
     </div>
     {createKind && <div className="drawer-layer" role="presentation"><button className="drawer-backdrop" onClick={() => setCreateKind(null)} aria-label="Cerrar formulario" /><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title"><div className="drawer-header"><div><p>NUEVO REGISTRO</p><h2 id="drawer-title">{drawerTitle(createKind)}</h2></div><button onClick={() => setCreateKind(null)} aria-label="Cerrar">×</button></div><CreateForm kind={createKind} onSubmit={saveCreate} onCancel={() => setCreateKind(null)} /></aside></div>}
+    {profilePanel === "settings" && <ProfilePanel kind="settings" email={userEmail} onClose={() => setProfilePanel(null)} />}
+    {profilePanel === "profile" && <ProfilePanel kind="profile" email={userEmail} onClose={() => setProfilePanel(null)} />}
   </div>;
+}
+
+function ProfilePanel({ kind, email, onClose }: { kind: "settings" | "profile"; email: string; onClose: () => void }) {
+  const settings = kind === "settings";
+  return <div className="drawer-layer profile-panel-layer"><button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar panel" /><aside className="drawer profile-panel" role="dialog" aria-modal="true" aria-labelledby="profile-panel-title"><div className="drawer-header"><div><p>{settings ? "KHORA · CONFIGURACIÓN" : "KHORA · CUENTA"}</p><h2 id="profile-panel-title">{settings ? "Configuración" : "Mi perfil"}</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></div><div className="profile-panel-body">{settings ? <><section><strong>Cuenta conectada</strong><p>{email}</p><small>Tu sesión está protegida por Supabase Auth.</small></section><section><strong>Preferencias operativas</strong><p>Las alertas, movimientos y documentos se calculan con los datos reales del negocio.</p><small>Podés administrar el detalle desde cada módulo sin modificar el historial.</small></section><section><strong>Seguridad</strong><p>RLS y permisos activos</p><small>KHORA mantiene la base protegida para usuarios autorizados.</small></section></> : <><div className="profile-panel-avatar">PZ</div><section><strong>Paula</strong><p>{email}</p><small>Administradora del negocio</small></section><section><strong>Acceso</strong><p>Cuenta activa</p><small>Podés cerrar sesión desde el menú superior.</small></section></>}</div><footer><button className="primary-button" onClick={onClose}>Listo</button></footer></aside></div>;
 }
 
 function GlobalSearchPalette({ query, results, selectedIndex, onSelect, onClose }: { query: string; results: GlobalSearchResult[]; selectedIndex: number; onSelect: (result: GlobalSearchResult) => void; onClose: () => void }) {
