@@ -189,6 +189,25 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 @media(min-width:1280px){.mobile-alert-button{display:grid}}
 @media(min-width:1280px){.horizontal-nav button>i{display:grid}}
 @media(max-width:1279px){.top-nav-menu{position:static;transform:none;animation:none;opacity:1}.top-nav-group{height:auto;display:block}.top-nav-group>button{width:100%}}
+
+/* Mantener la navegación principal accesible en anchos de notebook.
+   El menú desktop se ocultaba hasta 1279px, pero el botón del menú lateral
+   recién aparecía por debajo de 920px; entre ambos puntos no quedaba una
+   navegación visible. */
+@media (min-width:1041px) and (max-width:1279px){
+  .desktop-navbar{display:grid;padding:0 12px;gap:8px}
+  .topbar{top:68px}
+  .horizontal-nav{justify-content:flex-start;overflow-x:auto;scrollbar-width:none}
+  .horizontal-nav::-webkit-scrollbar{display:none}
+  .horizontal-nav button{padding:0 6px;font-size:9px}
+  .horizontal-nav button i{display:none}
+  .navbar-brand strong{font-size:15px}
+  .navbar-brand small,.navbar-profile>span:nth-child(2){display:none}
+  .navbar-profile{padding:0 3px}
+}
+@media (min-width:921px) and (max-width:1040px){
+  .menu-button{display:block}
+}
 .horizontal-nav{overflow:visible}
 
 /* Filas intercaladas para tablas largas */
