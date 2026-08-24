@@ -291,6 +291,7 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 .drawer-layer .inventory-form-drawer>.inventory-form-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;align-content:start;overscroll-behavior:contain;padding-bottom:34px}
 .drawer-layer .inventory-form-drawer>footer{flex:0 0 auto;position:relative;z-index:2;background:#fff;margin-top:0}
 .sale-detail-drawer{width:min(900px,55vw)}
+.sale-detail-drawer>footer>.danger-button{margin-right:auto}
 .sale-detail-drawer>.inventory-form-body{display:grid;gap:16px}
 .sale-detail-summary{grid-template-columns:repeat(3,minmax(0,1fr))}
 .sale-detail-section{overflow:visible;min-width:0}
