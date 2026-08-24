@@ -322,6 +322,28 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 @media(max-width:600px){.sale-detail-summary{grid-template-columns:1fr 1fr}.sale-detail-drawer,.combo-form-drawer{width:100vw}.drawer-layer .inventory-form-drawer>.inventory-form-body{padding:15px;padding-bottom:28px}.sale-detail-section article{align-items:flex-start;flex-wrap:wrap}.sale-detail-section article>strong{margin-left:auto}.sale-detail-drawer>footer{padding:12px 15px}}
 @media(max-width:420px){.sale-detail-summary{grid-template-columns:1fr}}
 
+/* Form layouts remain readable at notebook widths and keep long compositions inside the drawer. */
+@media (min-width:901px) and (max-width:1279px){
+  .drawer-layer .combo-form-drawer,.drawer-layer .manufacture-form-drawer{width:min(900px,calc(100vw - 24px));}
+  .combo-composition{overflow:hidden;min-width:0;}
+  .combo-composition-lines{max-height:300px;overflow-y:auto;overflow-x:hidden;padding-right:4px;}
+  .combo-composition-lines article{min-width:0;grid-template-columns:minmax(0,1.25fr) minmax(130px,.9fr) 120px 32px;}
+  .combo-composition-lines article>label,.combo-composition-lines select{min-width:0;}
+  .combo-composition-lines select{text-overflow:ellipsis;}
+  .manufacture-material-list{overflow-x:auto;}
+  .manufacture-material-list>article{min-width:680px;grid-template-columns:minmax(150px,1.15fr) minmax(330px,2fr) auto;}
+  .manufacture-material-list dl{gap:6px;}
+}
+@media(max-width:760px){
+  .combo-composition-lines{max-height:360px;overflow-y:auto;}
+  .combo-composition-lines article{grid-template-columns:1fr 1fr;gap:10px;}
+  .combo-composition-lines article>button{grid-column:2;justify-self:end;}
+  .manufacture-material-list>article{grid-template-columns:1fr;min-width:0;}
+  .manufacture-material-list dl{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+.section-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 18px;border:1px solid var(--line,#dce5df);border-radius:14px;background:var(--surface,#fff);}
+.section-toolbar>div{display:grid;gap:4px}.section-toolbar span{color:var(--muted,#64756c);font-size:.88rem}.price-list-card-actions{display:flex;align-items:center;gap:8px}.price-list-dialog{max-width:620px}.checkbox-line{display:flex;align-items:center;gap:10px}.checkbox-line input{width:18px;height:18px}.checkbox-line span{font-weight:600}.report-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.report-card{display:flex;flex-direction:column;justify-content:space-between;gap:18px;min-height:150px;padding:20px;border:1px solid var(--line,#dce5df);border-radius:16px;background:var(--surface,#fff)}.report-card>div{display:grid;gap:6px}.report-card small{color:var(--muted,#64756c);letter-spacing:.08em;font-size:.68rem}.report-card h2{margin:0;font-size:1.2rem}.report-card p{margin:0;color:var(--muted,#64756c);font-size:.88rem}.report-card button{align-self:flex-start}@media(max-width:900px){.report-card-grid{grid-template-columns:1fr 1fr}}@media(max-width:600px){.section-toolbar{align-items:flex-start;flex-direction:column}.report-card-grid{grid-template-columns:1fr}}
+
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .horizontal-nav button,.side-nav button,.settings-button,.new-button,.context-create,.primary-button,.secondary-button,.period-button,.icon-button,.more-button,.metric-card,.order-card,.product-card,.supplier-card,.calendar-business-event,.drawer-layer>aside,.confirm-dialog,.quick-menu,.profile-menu,.toast{transform:none!important}
