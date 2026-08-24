@@ -284,6 +284,24 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 @media(max-width:760px){.finance-comparison-selectors{width:100%;flex-wrap:wrap}.finance-comparison-selectors select{flex:1;min-width:135px}.panel-head:has(.finance-comparison-selectors){align-items:flex-start;flex-direction:column}}
 @media(max-width:600px){.sale-edit-payment,.sale-edit-controls,.sale-detail-summary{grid-template-columns:1fr}.sale-edit-payment p,.sale-edit-controls label:last-child{grid-column:auto}.sale-row-actions{align-items:flex-end;flex-direction:column}}
 
+/* Drawers: one predictable scroll area between a fixed header and footer. */
+.drawer-layer{overscroll-behavior:contain}
+.drawer-layer .inventory-form-drawer{height:100dvh;max-height:100dvh;overflow:hidden;display:flex;flex-direction:column}
+.drawer-layer .inventory-form-drawer>header{flex:0 0 auto;background:#fff;position:relative;z-index:2}
+.drawer-layer .inventory-form-drawer>.inventory-form-body{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;align-content:start;overscroll-behavior:contain;padding-bottom:34px}
+.drawer-layer .inventory-form-drawer>footer{flex:0 0 auto;position:relative;z-index:2;background:#fff;margin-top:0}
+.sale-detail-drawer{width:min(900px,55vw)}
+.sale-detail-drawer>.inventory-form-body{display:grid;gap:16px}
+.sale-detail-summary{grid-template-columns:repeat(3,minmax(0,1fr))}
+.sale-detail-section{overflow:visible;min-width:0}
+.sale-detail-section article{min-height:56px}
+.combo-form-drawer{width:min(900px,60vw)}
+.combo-composition{overflow:visible;min-height:0}
+.combo-composition-lines{max-height:none;overflow:visible;scrollbar-gutter:auto}
+@media(max-width:900px){.sale-detail-drawer,.combo-form-drawer{width:min(760px,100vw)}}
+@media(max-width:600px){.sale-detail-summary{grid-template-columns:1fr 1fr}.sale-detail-drawer,.combo-form-drawer{width:100vw}.drawer-layer .inventory-form-drawer>.inventory-form-body{padding:15px;padding-bottom:28px}.sale-detail-section article{align-items:flex-start;flex-wrap:wrap}.sale-detail-section article>strong{margin-left:auto}.sale-detail-drawer>footer{padding:12px 15px}}
+@media(max-width:420px){.sale-detail-summary{grid-template-columns:1fr}}
+
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0ms!important}
   .horizontal-nav button,.side-nav button,.settings-button,.new-button,.context-create,.primary-button,.secondary-button,.period-button,.icon-button,.more-button,.metric-card,.order-card,.product-card,.supplier-card,.calendar-business-event,.drawer-layer>aside,.confirm-dialog,.quick-menu,.profile-menu,.toast{transform:none!important}
