@@ -693,6 +693,8 @@ test("los combos aceptan productos y materias primas directas", async () => {
   assert.match(sections, /Agregar materia prima/);
   assert.match(sections, /Todavía no agregaste materias primas/);
   assert.match(sections, /materialItems: materialItems\.map/);
+  assert.match(sections, /Precio unitario/);
+  assert.match(sections, /salePriceCents: Number\(row\.sale_price_cents/);
   assert.match(route, /INSERT INTO combo_material_items/);
   assert.match(route, /Agregá al menos un producto o insumo al combo/);
 });
