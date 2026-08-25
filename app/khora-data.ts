@@ -31,7 +31,6 @@ export type CashTransaction = { id: string; occurredAt: string; direction: "IN" 
 export const navigation: Array<{ id: SectionId; label: string; icon: KhoraIconName }> = [
   { id: "inicio", label: "Inicio", icon: moduleIcons.inicio },
   { id: "ventas", label: "Ventas", icon: moduleIcons.ventas },
-  { id: "pedidos", label: "Pedidos", icon: moduleIcons.pedidos },
   { id: "clientes", label: "Clientes", icon: moduleIcons.clientes },
   { id: "productos", label: "Productos", icon: moduleIcons.productos },
   { id: "fabricacion", label: "Fabricación", icon: moduleIcons.fabricacion },
@@ -49,7 +48,6 @@ export type PrimaryNavigationItem =
 export const primaryNavigation: PrimaryNavigationItem[] = [
   { type: "link", id: "inicio", label: "Inicio", icon: moduleIcons.inicio },
   { type: "link", id: "ventas", label: "Ventas", icon: moduleIcons.ventas },
-  { type: "link", id: "pedidos", label: "Pedidos", icon: moduleIcons.pedidos },
   { type: "link", id: "productos", label: "Productos", icon: moduleIcons.productos },
   { type: "link", id: "compras", label: "Compras", icon: moduleIcons.compras },
   { type: "group", id: "contactos", label: "Contactos", icon: moduleIcons.clientes, children: [{ id: "clientes", label: "Clientes", icon: moduleIcons.clientes }, { id: "proveedores", label: "Proveedores", icon: moduleIcons.proveedores }] },

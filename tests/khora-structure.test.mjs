@@ -10,12 +10,14 @@ test("incluye todas las áreas principales del negocio", async () => {
     read("app/khora-data.ts"),
     read("app/khora-sections.tsx"),
   ]);
-  for (const area of ["inicio", "ventas", "pedidos", "clientes", "productos", "fabricacion", "stock", "compras", "proveedores", "finanzas"]) {
+  for (const area of ["inicio", "ventas", "clientes", "productos", "fabricacion", "stock", "compras", "proveedores", "finanzas", "calendario"]) {
     assert.match(data, new RegExp(`id: "${area}"`));
   }
-  for (const screen of ["Dashboard", "Sales", "Orders", "Customers", "Products", "Manufacturing", "Stock", "Purchases", "Suppliers", "Finance"]) {
+  for (const screen of ["Dashboard", "Sales", "Customers", "Products", "Manufacturing", "Stock", "Purchases", "Suppliers", "Finance", "CalendarPage"]) {
     assert.match(sections, new RegExp(`function ${screen}\\b`));
   }
+  assert.doesNotMatch(data, /\{ id: "pedidos", label:/);
+  assert.doesNotMatch(sections, /function Orders\b/);
 });
 
 test("el modelo cubre pedidos, pagos, envíos, remitos y auditoría", async () => {
@@ -63,17 +65,15 @@ test("la navegación desktop es horizontal y Calendario es un módulo independie
   ]);
   assert.match(page, /className="desktop-navbar"/);
   assert.match(css, /\.desktop-navbar\{[^}]*position:sticky/);
-  assert.match(sections, /type OrderView = "board" \| "list"/);
-  assert.doesNotMatch(sections, /view === "calendar"/);
+  assert.doesNotMatch(sections, /type OrderView/);
   assert.match(sections, /section === "calendario"/);
   assert.match(data, /id: "calendario", label: "Calendario"/);
   assert.doesNotMatch(page, /<button title="Configuración"/);
   assert.match(sections, /event\.date === key/);
-  assert.match(sections, /isOrderOverdue/);
-  assert.equal((data.match(/expectedAt: "2026-08-14"/g) ?? []).length, 2);
+  assert.doesNotMatch(sections, /isOrderOverdue/);
 });
 
-test("la Fase 1 reutiliza los datos existentes para agenda, alertas, búsqueda y timeline", async () => {
+test("la operación reutiliza datos reales para agenda, alertas y búsqueda sin exponer Pedidos", async () => {
   const [page, sections, operations, data] = await Promise.all([
     read("app/page.tsx"),
     read("app/khora-sections.tsx"),
@@ -82,15 +82,16 @@ test("la Fase 1 reutiliza los datos existentes para agenda, alertas, búsqueda y
   ]);
   assert.match(operations, /getOperationalOverview/);
   assert.match(operations, /searchKhora/);
-  assert.match(operations, /getOrderTimeline/);
-  for (const category of ["Pedidos", "Clientes", "Productos", "Materias primas", "Lotes", "Proveedores"]) {
+  assert.doesNotMatch(operations, /getOrderTimeline/);
+  for (const category of ["Clientes", "Productos", "Materias primas", "Lotes", "Proveedores"]) {
     assert.match(operations, new RegExp(`category: "${category}"`));
   }
+  assert.doesNotMatch(operations, /category: "Pedidos"/);
   assert.match(page, /GlobalSearchPalette/);
   assert.match(page, /NotificationCenter/);
   assert.match(page, /event\.metaKey \|\| event\.ctrlKey/);
   assert.match(sections, /operations-center/);
-  assert.match(sections, /set_order_status/);
+  assert.doesNotMatch(sections, /set_order_status/);
   assert.match(data, /history:/);
 });
 
@@ -213,9 +214,10 @@ test("la Fase 5 unifica el calendario global con capas operativas reutilizables"
     read("app/api/khora/route.ts"),
     read("app/calendario/page.tsx"),
   ]);
-  for (const layer of ["orders", "deliveries", "manufacturing", "purchases", "payments"]) {
+  for (const layer of ["manufacturing", "purchases", "payments"]) {
     assert.match(calendar, new RegExp(`\\"${layer}\\"`));
   }
+  assert.doesNotMatch(calendar, /"orders"|"deliveries"/);
   assert.match(calendar, /export function getBusinessCalendarEvents/);
   assert.match(calendar, /export function countCalendarEvents/);
   assert.match(sections, /CALENDARIO DEL NEGOCIO/);
@@ -230,7 +232,7 @@ test("la Fase 5 unifica el calendario global con capas operativas reutilizables"
 
 test("el calendario integral deriva eventos de las tablas operativas sin tabla paralela", async () => {
   const [route, schema] = await Promise.all([read("app/api/khora/route.ts"), read("db/schema.ts")]);
-  assert.match(route, /FROM orders o/);
+  assert.doesNotMatch(route.match(/if\(entity==="calendar_events"\)[\s\S]*?if\(entity==="cash_summary"\)/)?.[0] ?? "", /FROM orders o/);
   assert.match(route, /FROM manufacturing_batches mb/);
   assert.match(route, /FROM purchase_orders po/);
   assert.match(route, /FROM payments p/);
@@ -440,11 +442,13 @@ test("el alta unificada selecciona insumos guardados, cantidades, unidades y có
   assert.match(sections, /items: hasRecipe \? items\.map/);
   assert.match(sections, /Agregá al menos una materia prima a la receta\./);
   assert.match(sections, /action: product \? "update_product_definition" : "save_product_with_recipe"/);
-  assert.match(sections, /action: "save_combo", name/);
+  assert.match(sections, /action: "save_combo_definition"/);
   assert.match(sections, /Productos del combo/);
   assert.match(sections, /comboItems/);
+  assert.match(sections, /Materias primas e insumos/);
+  assert.match(sections, /materialItems/);
   assert.match(sections, /Costo estimado de fabricación/);
-  assert.match(sections, /action: "save_combo_recipe"/);
+  assert.match(sections, /action: "update_combo_definition"/);
   assert.match(sections, /type="text" inputMode="decimal"/);
   assert.match(sections, /Tabs tabs=\{\["Productos", "Combos", "Recetas", "Categorías"\]\}/);
   assert.match(sections, /document\.addEventListener\("focusin", selectNumberOnFocus\)/);
@@ -521,7 +525,7 @@ test("la Fase F vincula cada pedido con una sola venta y separa confirmación de
   assert.match(migration, /UNIQUE INDEX IF NOT EXISTS idx_orders_main_sale_unique/);
   assert.match(migration, /source_order_item_id/);
   assert.match(route, /const confirmOrder=/);
-  assert.match(route, /operationKey.*ORDER-/s);
+  assert.match(route, /op=`ORDER-\$\{orderId\}`/);
   assert.match(route, /INSERT OR IGNORE INTO sales/);
   const confirmation = route.match(/const confirmOrder=[\s\S]*?return \{saleId:n\(linked\?\.sale_id\),created:true\};\n\};/)?.[0] ?? "";
   assert.doesNotMatch(confirmation, /UPDATE products SET current_stock|finished_stock_allocations/);
@@ -609,9 +613,12 @@ test("KHORA centraliza el lenguaje iconográfico de todos los módulos", async (
   }
   assert.match(icons, /stroke="currentColor"/);
   assert.match(icons, /strokeWidth="1\.8"/);
-  assert.match(data, /icon: moduleIcons\.pedidos/);
+  assert.doesNotMatch(data, /icon: moduleIcons\.pedidos/);
   assert.match(operations, /icon: moduleIcons\.proveedores/);
-  assert.match(calendar, /icon: moduleIcons\.entregas/);
+  assert.match(calendar, /icon: moduleIcons\.fabricacion/);
+  assert.match(calendar, /icon: moduleIcons\.compras/);
+  assert.match(calendar, /icon: moduleIcons\.ventas/);
+  assert.doesNotMatch(calendar, /icon: moduleIcons\.entregas/);
   assert.match(page, /KhoraIcon name=\{item\.icon\}/);
   assert.match(sections, /KhoraIcon name=\{layer\.icon\}/);
   for (const source of [data, operations, calendar, page, sections]) assert.doesNotMatch(source, /(?:glyph\s*:|\.glyph\b|glyph=)/);
@@ -682,8 +689,9 @@ test("las alertas operativas se pueden descartar y permanecen ocultas", async ()
 
 test("los combos aceptan productos y materias primas directas", async () => {
   const [route, sections] = await Promise.all([read("app/api/khora/route.ts"), read("app/khora-sections.tsx")]);
-  assert.match(sections, /Materias primas directas/);
+  assert.match(sections, /Materias primas e insumos/);
   assert.match(sections, /Agregar materia prima/);
+  assert.match(sections, /Todavía no agregaste materias primas/);
   assert.match(sections, /materialItems: materialItems\.map/);
   assert.match(route, /INSERT INTO combo_material_items/);
   assert.match(route, /Agregá al menos un producto o insumo al combo/);
