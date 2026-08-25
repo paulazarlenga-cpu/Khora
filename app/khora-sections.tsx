@@ -480,7 +480,6 @@ function ProductFormDialog({ product, onCancel, onSaved, onCreateMaterial }: { p
   const [minimum, setMinimum] = useState(Number(product?.minimum_stock ?? 0));
   const [notes, setNotes] = useState(product?.notes ?? "");
   const [hasRecipe, setHasRecipe] = useState(product ? product.type === "MANUFACTURED" : true);
-  const [priceEstimateMode, setPriceEstimateMode] = useState<"price" | "margin">("price");
   const [desiredMargin, setDesiredMargin] = useState(45);
   const [items, setItems] = useState<RecipeDraftItem[]>([]);
   const recipeLinesRef = useRef<HTMLDivElement>(null);
@@ -492,13 +491,6 @@ function ProductFormDialog({ product, onCancel, onSaved, onCreateMaterial }: { p
   const estimatedProfit = salePriceCents - estimatedCost;
   const estimatedMargin = salePriceCents > 0 ? estimatedProfit * 100 / salePriceCents : 0;
   const estimatedPriceFromMargin = estimatedCost > 0 && desiredMargin < 100 ? Math.round(estimatedCost / (1 - desiredMargin / 100)) : 0;
-  const estimatedPriceFromMarginPesos = estimatedPriceFromMargin / 100;
-
-  function changePriceEstimateMode(mode: "price" | "margin") {
-    setPriceEstimateMode(mode);
-    if (mode === "margin" && estimatedPriceFromMargin > 0) setPricePesos(Number(estimatedPriceFromMarginPesos.toFixed(2)));
-  }
-
   function changeDesiredMargin(value: string) {
     const next = Math.min(99.9, Math.max(0, Number(value.replace(",", ".")) || 0));
     setDesiredMargin(next);
@@ -555,8 +547,8 @@ function ProductFormDialog({ product, onCancel, onSaved, onCreateMaterial }: { p
        <header><div><p>PRODUCTOS · DEFINICIÓN</p><h2 id="product-form-title">{product ? "Editar producto" : "Nuevo producto"}</h2><span>{product ? "Actualizá la definición sin modificar stock ni historial." : "Definí el producto y, si corresponde, su receta por unidad."}</span></div><button onClick={onCancel} aria-label="Cerrar">×</button></header>
       <div className="inventory-form-body">
          <div className="form-grid"><label className="automatic-code-field"><span>Código</span><input value={code} readOnly aria-describedby="product-code-help" /><small id="product-code-help">{product ? "Código estable · no se modifica" : "Generado automáticamente"}</small></label><label><span>Nombre del producto *</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Ej. Difusor Lavanda 250 ml" /></label></div>
-        <div className="form-grid"><label><span>Precio de venta ($)</span><input type="number" min="0" step="0.01" value={pricePesos} readOnly={priceEstimateMode === "margin"} onChange={(event) => setPricePesos(Math.max(0, Number(event.target.value) || 0))} /></label><label><span>Stock mínimo</span><input type="number" min="0" step="1" value={minimum} onChange={(event) => setMinimum(Math.max(0, Number(event.target.value) || 0))} /></label></div>
-        <section className="product-price-estimator" aria-labelledby="product-price-estimator-title"><header><div><strong id="product-price-estimator-title">Estimación de precio</strong><p>Elegí si querés calcular el margen desde un precio o el precio desde un margen.</p></div><div className="product-price-estimator-toggle" role="tablist" aria-label="Modo de cálculo"><button type="button" className={priceEstimateMode === "price" ? "active" : ""} onClick={() => changePriceEstimateMode("price")}>Definir precio</button><button type="button" className={priceEstimateMode === "margin" ? "active" : ""} onClick={() => changePriceEstimateMode("margin")}>Definir margen</button></div></header>{priceEstimateMode === "price" ? <div className="product-price-estimator-result"><span>Con el precio ingresado, el margen estimado es</span><strong>{estimatedMargin.toFixed(1)}%</strong><small>Podés modificar el precio de venta de arriba.</small></div> : <div className="product-price-estimator-fields"><label><span>Margen deseado</span><div><input type="number" min="0" max="99.9" step="0.1" value={desiredMargin} onChange={(event) => changeDesiredMargin(event.target.value)} /><b>%</b></div></label><div className="product-price-estimator-result"><span>Precio calculado</span><strong>{estimatedPriceFromMargin > 0 ? money(Math.round(estimatedPriceFromMargin * 100) / 100) : "—"}</strong><small>Se aplica al precio de venta mientras uses este modo.</small></div></div>}</section>
+         <div className="form-grid"><label><span>Precio de venta ($)</span><input type="number" min="0" step="0.01" value={pricePesos} onChange={(event) => setPricePesos(Math.max(0, Number(event.target.value) || 0))} /></label><label><span>Stock mínimo</span><input type="number" min="0" step="1" value={minimum} onChange={(event) => setMinimum(Math.max(0, Number(event.target.value) || 0))} /></label></div>
+        <section className="product-price-estimator" aria-labelledby="product-price-estimator-title"><header><div><strong id="product-price-estimator-title">Estimación de precio</strong><p>Podés definir el precio y consultar el margen, o indicar un margen para obtener el precio sugerido.</p></div></header><div className="product-price-estimator-fields"><div className="product-price-estimator-result"><span>Margen con el precio ingresado</span><strong>{estimatedMargin.toFixed(1)}%</strong><small>Se calcula sobre el costo estimado actual.</small></div><label><span>Margen deseado</span><div><input type="number" min="0" max="99.9" step="0.1" value={desiredMargin} onChange={(event) => changeDesiredMargin(event.target.value)} /><b>%</b></div></label><div className="product-price-estimator-result"><span>Precio sugerido para ese margen</span><strong>{estimatedPriceFromMargin > 0 ? money(Math.round(estimatedPriceFromMargin * 100) / 100) : "—"}</strong><small>Al cambiar el margen se actualiza el precio de venta.</small></div></div></section>
         <label><span>Notas internas <small>OPCIONAL</small></span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
         <label className="recipe-mode"><input type="checkbox" checked={hasRecipe} onChange={(event) => { setHasRecipe(event.target.checked); setError(""); }} /><span><strong>Producto fabricado</strong><small>Incluye una receta de materias primas. Desmarcá para un producto simple o de reventa.</small></span></label>
         <section className={`recipe-editor recipe-editor-visible ${hasRecipe ? "" : "recipe-editor-disabled"}`} aria-labelledby="recipe-title" data-testid="product-recipe-editor">
