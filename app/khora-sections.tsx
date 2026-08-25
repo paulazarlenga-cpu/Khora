@@ -81,12 +81,15 @@ function useKhoraObject<T>(url: string) {
 
 function Dashboard({ onNavigate }: { onNavigate: (section: SectionId, query?: string) => void }) {
   type Row = Record<string, unknown>;
+  type ChartPeriod = 3 | 6 | 12;
   type DashboardState = { summary: Row; products: Row[]; materials: Row[]; sales: Row[]; clients: Row[]; purchases: Row[]; profitability: Row[]; profits: Row[] };
   const empty: DashboardState = { summary: {}, products: [], materials: [], sales: [], clients: [], purchases: [], profitability: [], profits: [] };
   const [data, setData] = useState<DashboardState>(empty);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(6);
+  const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
   useEffect(() => {
     const refresh = () => { setLoading(true); setRevision((value) => value + 1); };
     window.addEventListener("khora:data-changed", refresh);
@@ -110,7 +113,7 @@ function Dashboard({ onNavigate }: { onNavigate: (section: SectionId, query?: st
   const monthPurchases = data.purchases.filter((row) => String(row.purchased_at).slice(0, 7) === currentMonth && !["CANCELLED", "Anulada"].includes(String(row.status)));
   const purchaseTotal = monthPurchases.reduce((sum, row) => sum + number(row.total_cost_cents), 0);
   const latestProfit = data.profits[0] ?? {};
-  const monthlyRows = Array.from({ length: 6 }, (_, index) => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - (5 - index)); const month = date.toISOString().slice(0, 7); return { month, sales_cents: data.sales.filter((row) => String(row.sold_at).slice(0, 7) === month && String(row.status) !== "CANCELLED").reduce((sum, row) => sum + number(row.total_cents), 0), purchases_cents: data.purchases.filter((row) => String(row.purchased_at).slice(0, 7) === month && !["CANCELLED", "Anulada"].includes(String(row.status))).reduce((sum, row) => sum + number(row.total_cost_cents), 0) }; });
+  const monthlyRows = Array.from({ length: 12 }, (_, index) => { const date = new Date(); date.setDate(1); date.setMonth(date.getMonth() - (11 - index)); const month = date.toISOString().slice(0, 7); return { month, sales_cents: data.sales.filter((row) => String(row.sold_at).slice(0, 7) === month && String(row.status) !== "CANCELLED").reduce((sum, row) => sum + number(row.total_cents), 0), purchases_cents: data.purchases.filter((row) => String(row.purchased_at).slice(0, 7) === month && !["CANCELLED", "Anulada"].includes(String(row.status))).reduce((sum, row) => sum + number(row.total_cost_cents), 0) }; });
   const topRealProducts = data.profitability.filter((row) => number(row.units_sold) > 0).slice(0, 5);
   const maxUnits = Math.max(1, ...topRealProducts.map((row) => number(row.units_sold)));
   const recoveryClients = data.clients.filter((row) => row.last_purchase && number(row.days_without_buying) >= 30).sort((a, b) => number(b.days_without_buying) - number(a.days_without_buying)).slice(0, 4);
@@ -143,8 +146,8 @@ function Dashboard({ onNavigate }: { onNavigate: (section: SectionId, query?: st
       <Metric label="Materias primas bajas" value={String(number(data.summary.lowMaterials))} detail="Requieren reposición" tone="warning" icon={moduleIcons.stock} onClick={() => onNavigate("stock")} />
     </div>
     <div className="dashboard-grid dashboard-main">
-      <Panel className="chart-panel" title="Ventas vs Compras" subtitle="Comparación mensual entre lo vendido y lo comprado" action={<button className="period-button">Últimos 6 meses⌄</button>}>
-        <DashboardMonthlyChart rows={monthlyRows} />
+      <Panel className="chart-panel" title="Ventas vs Compras" subtitle="Comparación mensual entre lo vendido y lo comprado" action={<div className="period-control"><button className="period-button" aria-haspopup="menu" aria-expanded={periodMenuOpen} onClick={() => setPeriodMenuOpen((open) => !open)}>Últimos {chartPeriod} meses⌄</button>{periodMenuOpen && <div className="period-menu" role="menu" aria-label="Período del gráfico">{([3, 6, 12] as ChartPeriod[]).map((period) => <button key={period} role="menuitem" className={period === chartPeriod ? "active" : ""} onClick={() => { setChartPeriod(period); setPeriodMenuOpen(false); }}>Últimos {period} meses{period === chartPeriod && <span aria-hidden="true">✓</span>}</button>)}</div>}</div>}>
+        <DashboardMonthlyChart rows={monthlyRows.slice(-chartPeriod)} />
       </Panel>
       <Panel title="Centro de alertas" subtitle="Calculadas con los datos actuales" action={<span className="alert-total">{alerts.length} activas</span>}>
         <div className="alert-list">{alerts.slice(0, 6).map((alert) => <article className="alert-row" key={alert.id}><i className={`dot ${alert.tone}`} /><div><span className={`priority-label ${alert.tone === "danger" ? "critical" : "attention"}`}>{alert.tone === "danger" ? "CRÍTICO" : "ATENCIÓN"}</span><strong>{alert.title}</strong><p>{alert.detail}</p><button onClick={() => onNavigate(alert.section)}>Revisar →</button></div></article>)}{!alerts.length && <p className="empty-operation">✓ No hay alertas activas.</p>}</div>
