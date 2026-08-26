@@ -317,6 +317,25 @@ test("la compra atómica guarda entrada, conversión, movimiento y promedio", as
   assert.match(sections, /Nuevo promedio/);
 });
 
+test("las compras confirmadas se pueden anular con reversión y luego eliminar definitivamente", async () => {
+  const [route, sections] = await Promise.all([
+    read("app/api/khora/route.ts"),
+    read("app/khora-sections.tsx"),
+  ]);
+  assert.match(route, /action==="cancel_purchase"/);
+  assert.match(route, /COALESCE\(p\.base_quantity,p\.quantity\) purchase_quantity/);
+  assert.match(route, /UPDATE raw_material_purchases SET status='CANCELLED'/);
+  assert.match(route, /UPDATE raw_materials SET current_stock=current_stock-\?/);
+  assert.match(route, /Anulación de compra/);
+  assert.match(route, /action==="delete_purchase"/);
+  assert.match(route, /DELETE FROM stock_movements WHERE reference_table='raw_material_purchases'/);
+  assert.match(route, /Para proteger el stock, primero anulá la compra/);
+  assert.match(sections, /PurchaseCancelDialog/);
+  assert.match(sections, /Anular compra/);
+  assert.match(sections, /Eliminar compra/);
+  assert.match(sections, /setCancelingPurchase\(purchase\)/);
+});
+
 test("la Fase C crea producto y receta por IDs sin mover inventario", async () => {
   const [route, sections] = await Promise.all([
     read("app/api/khora/route.ts"),

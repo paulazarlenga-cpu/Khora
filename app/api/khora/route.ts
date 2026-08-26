@@ -472,14 +472,43 @@ export async function POST(request:Request){try{const user=await getKhoraUser();
   ]);
   return ok({ok:true,id});
  }
- if(action==="cancel_purchase"){const id=n(b.id),p=await db().prepare("SELECT p.*,rm.current_stock FROM raw_material_purchases p JOIN raw_materials rm ON rm.id=p.material_id WHERE p.id=?").bind(id).first<NRow>();if(!p||p.status!=="CONFIRMED")throw new Error("La compra ya está anulada o no existe");if(n(p.current_stock)<n(p.quantity))throw new Error(`No se puede anular: faltan ${(n(p.quantity)-n(p.current_stock)).toFixed(2)} unidades en StockMP`);const op=uid(),balance=n(p.current_stock)-n(p.quantity);await db().batch([db().prepare("UPDATE raw_material_purchases SET status='CANCELLED',cancelled_at=CURRENT_TIMESTAMP WHERE id=?").bind(id),db().prepare("UPDATE financial_payment_events SET status='CANCELLED' WHERE raw_material_purchase_id=? AND status='CONFIRMED'").bind(id),db().prepare("UPDATE reinvestment_movements SET status='CANCELLED' WHERE raw_material_purchase_id=? AND status='CONFIRMED'").bind(id),db().prepare("UPDATE raw_materials SET current_stock=current_stock-? WHERE id=?").bind(p.quantity,p.material_id),db().prepare("INSERT INTO stock_movements(operation_key,entity_type,material_id,movement_type,quantity_delta,balance_after,unit_cost_cents,reference_table,reference_id,notes) VALUES(?,'MATERIAL',?,'ADJUSTMENT',?,?,?,'raw_material_purchases',?,'Anulación de compra')").bind(op,p.material_id,-n(p.quantity),balance,p.unit_cost_cents,id),...recalcStatements()]);return ok()}
+ if(action==="cancel_purchase"){
+  const id=n(b.id),p=await db().prepare(`SELECT p.id,p.material_id,p.status,p.unit_cost_cents,
+    COALESCE(p.base_quantity,p.quantity) purchase_quantity,rm.current_stock,rm.current_cost_cents
+    FROM raw_material_purchases p JOIN raw_materials rm ON rm.id=p.material_id WHERE p.id=?`).bind(id).first<NRow>();
+  if(!p||s(p.status)!=="CONFIRMED")throw new Error("La compra ya está anulada o no existe");
+  const quantity=n(p.purchase_quantity),currentStock=n(p.current_stock);
+  if(quantity<=0)throw new Error("La compra tiene una cantidad inválida y no se puede anular");
+  if(currentStock+0.000001<quantity)throw new Error(`No se puede anular: faltan ${(quantity-currentStock).toFixed(2)} unidades en stock. Primero revisá los movimientos que consumieron este ingreso.`);
+  const op=uid(),balance=currentStock-quantity;
+  const before={status:"CONFIRMED",stock:currentStock,costCents:n(p.current_cost_cents),quantity};
+  const afterCost=`COALESCE((SELECT ROUND((SUM(COALESCE(base_quantity,quantity)*unit_cost_cents) / NULLIF(SUM(COALESCE(base_quantity,quantity)),0))::numeric)::bigint
+    FROM raw_material_purchases WHERE material_id=? AND status='CONFIRMED' AND id<>?),0)`;
+  await db().batch([
+   db().prepare("UPDATE raw_material_purchases SET status='CANCELLED',cancelled_at=CURRENT_TIMESTAMP WHERE id=? AND status='CONFIRMED'").bind(id),
+   db().prepare("UPDATE financial_payment_events SET status='CANCELLED' WHERE raw_material_purchase_id=? AND status='CONFIRMED'").bind(id),
+   db().prepare("UPDATE reinvestment_movements SET status='CANCELLED' WHERE raw_material_purchase_id=? AND status='CONFIRMED'").bind(id),
+   db().prepare(`UPDATE raw_materials SET current_stock=current_stock-?,current_cost_cents=${afterCost} WHERE id=? AND current_stock>=?`).bind(quantity,p.material_id,id,p.material_id,quantity),
+   db().prepare("INSERT INTO stock_movements(operation_key,entity_type,material_id,movement_type,quantity_delta,balance_after,unit_cost_cents,reference_table,reference_id,notes) VALUES(?,'MATERIAL',?,'ADJUSTMENT',?,?,?,'raw_material_purchases',?,'Anulación de compra')").bind(op,p.material_id,-quantity,balance,n(p.unit_cost_cents),id),
+   db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,before_json,after_json) VALUES('CANCEL','PURCHASE',?,?,?,?,?)").bind(id,actorEmail,`Compra C-${id} anulada con reversión de stock`,JSON.stringify(before),JSON.stringify({status:"CANCELLED",stock:balance,stockRestored:quantity})),
+   ...recalcStatements()
+  ]);
+  await refreshProfits();
+  return ok({ok:true,id,stockRestored:quantity,newStock:balance});
+ }
  if(action==="delete_purchase"){
   const id=n(b.id),purchase=await db().prepare("SELECT id,status FROM raw_material_purchases WHERE id=?").bind(id).first<NRow>();
   if(!purchase)throw new Error("La compra no existe");
   if(s(purchase.status)!=="CANCELLED")throw new Error("Para proteger el stock, primero anulá la compra");
   const refs=await db().prepare("SELECT (SELECT COUNT(*) FROM expenses WHERE raw_material_purchase_id=?) expense_refs,(SELECT COUNT(*) FROM reinvestment_movements WHERE raw_material_purchase_id=?) reinvestment_refs").bind(id,id).first<NRow>();
   if(n(refs?.expense_refs)>0||n(refs?.reinvestment_refs)>0)throw new Error("La compra tiene registros históricos asociados y no puede eliminarse definitivamente");
-  await db().batch([db().prepare("DELETE FROM financial_payment_events WHERE raw_material_purchase_id=?").bind(id),db().prepare("DELETE FROM raw_material_purchases WHERE id=? AND status='CANCELLED'").bind(id)]);
+  await db().batch([
+   db().prepare("DELETE FROM financial_payment_events WHERE raw_material_purchase_id=?").bind(id),
+   db().prepare("DELETE FROM stock_movements WHERE reference_table='raw_material_purchases' AND reference_id=?").bind(id),
+   db().prepare("DELETE FROM audit_logs WHERE entity_type='PURCHASE' AND entity_id=?").bind(id),
+   db().prepare("DELETE FROM raw_material_purchases WHERE id=? AND status='CANCELLED'").bind(id)
+  ]);
+  await refreshProfits();
   return ok({ok:true,deleted:true,id});
  }
  if(action==="save_expense"){
