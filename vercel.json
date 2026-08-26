@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/khora?entity=finance_auto_close",
+      "schedule": "5 3 1 * *"
+    }
+  ]
+}

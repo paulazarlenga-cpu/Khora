@@ -119,8 +119,8 @@ export default function Home() {
     </header>
     <aside className={`sidebar ${mobileNav ? "is-open" : ""}`} aria-label="Navegación principal">
       <div className="brand-block"><div className="brand-mark" aria-hidden="true">K</div><div><strong>KHORA</strong><span>Gestión simple</span></div><button className="sidebar-close" onClick={() => setMobileNav(false)} aria-label="Cerrar menú">×</button></div>
-      <nav className="side-nav"><span className="nav-caption">GESTIÓN</span>{navigation.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => goTo(item.id)}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "stock" && lowMaterialCount > 0 && <b className="nav-alert">!</b>}</button>)}</nav>
-      <div className="sidebar-bottom"><div className="profile-mini"><div className="avatar">PZ</div><div><strong>Paula</strong><span>Administradora</span></div><button aria-label="Opciones del perfil">•••</button></div></div>
+      <nav className="side-nav"><span className="nav-caption">GESTIÓN</span>{navigation.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => { setMobileNav(false); goTo(item.id); }}><i aria-hidden="true"><KhoraIcon name={item.icon} /></i><span>{item.label}</span>{item.id === "stock" && lowMaterialCount > 0 && <b className="nav-alert">!</b>}</button>)}</nav>
+      <div className="sidebar-bottom"><div className="profile-mini"><div className="avatar">PZ</div><div><strong>Paula</strong><span>Administradora</span></div><button aria-label="Opciones del perfil" onClick={() => { setMobileNav(false); setProfilePanel("profile"); }}>•••</button></div></div>
     </aside>
     {mobileNav && <button className="sidebar-scrim" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}
     <div className="main-column">
