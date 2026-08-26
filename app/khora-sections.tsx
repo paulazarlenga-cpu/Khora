@@ -420,7 +420,7 @@ function WhatsAppComposer({ customer, order, defaultTemplate = "confirm", onClos
   return <div className="whatsapp-layer"><button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar mensaje" /><section className="whatsapp-composer" role="dialog" aria-modal="true" aria-labelledby="whatsapp-title"><header><div><p>MENSAJE PREPARADO</p><h2 id="whatsapp-title">WhatsApp para {customer.name}</h2><span>{customer.phone || "Sin teléfono"}</span></div><button onClick={onClose} aria-label="Cerrar">×</button></header><div><label><span>Motivo</span><select value={template} onChange={(event) => changeTemplate(event.target.value as WhatsAppTemplate)}>{available.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label><label><span>Revisá el mensaje antes de continuar</span><textarea rows={11} value={message} onChange={(event) => setMessage(event.target.value)} /></label><div className="whatsapp-safe-note"><i>i</i><p>KHORA no envía mensajes automáticamente. Se abrirá WhatsApp con este borrador para que lo revises nuevamente.</p></div></div><footer><button className="secondary-button" onClick={onClose}>Cancelar</button>{customer.phone && <a className="primary-button" href={buildWhatsAppLink(customer.phone, message)} target="_blank" rel="noreferrer">Abrir WhatsApp ↗</a>}</footer></section></div>;
 }
 
-type ProductRow = { id: number; code: string; name: string; notes?: string; type: string; combo_id?: number; sale_price_cents: number; current_stock: number; minimum_stock: number; estimated_cost_cents: number; last_batch_unit_cost_cents: number; profit_percentage: number; active: boolean; image_path?: string } & Record<string, unknown>;
+type ProductRow = { id: number; code: string; name: string; notes?: string; type: string; combo_id?: number; sale_price_cents: number; current_stock: number; minimum_stock: number; estimated_cost_cents: number; last_batch_unit_cost_cents: number; profit_percentage: number; pricing_mode?: ProductPricingMode; target_margin_percentage?: number | null; active: boolean; image_path?: string } & Record<string, unknown>;
 type RecipeRow = { id: number; product_id: number; code: string; product: string; yield_quantity: number; components: number; estimated_cost_cents: number; active: boolean; updated_at: string } & Record<string, unknown>;
 type ComboRow = { id: number; product_id: number; code: string; combo: string; notes?: string; components: number; sale_price_cents: number; current_stock: number; minimum_stock: number; estimated_cost_cents: number; last_batch_unit_cost_cents: number; active: boolean; updated_at: string } & Record<string, unknown>;
 type CategoryRow = { id: number; code: string; name: string; prefix?: string; category_type: string; kind: string; active: boolean } & Record<string, unknown>;
@@ -471,31 +471,31 @@ function Products({ search, onCreateMaterial }: { search: string; onCreateMateri
 }
 
 type RecipeDraftItem = { materialId: number; quantity: string };
+type ProductPricingMode = "manual_price" | "target_margin";
 
 function ProductFormDialog({ product, onCancel, onSaved, onCreateMaterial }: { product?: ProductRow; onCancel: () => void; onSaved: (message: string) => void; onCreateMaterial: () => void }) {
   const [catalog, setCatalog] = useState<MaterialRecord[]>([]);
   const [code, setCode] = useState(() => product?.code ?? nextSequentialCode([], "PRODUCT"));
   const [name, setName] = useState(product?.name ?? "");
-  const [pricePesos, setPricePesos] = useState(Number(product?.sale_price_cents ?? 0) / 100);
+  const [priceInput, setPriceInput] = useState(() => String(Number(product?.sale_price_cents ?? 0) / 100));
   const [minimum, setMinimum] = useState(Number(product?.minimum_stock ?? 0));
   const [notes, setNotes] = useState(product?.notes ?? "");
   const [hasRecipe, setHasRecipe] = useState(product ? product.type === "MANUFACTURED" : true);
-  const [desiredMargin, setDesiredMargin] = useState(45);
+  const [pricingMode, setPricingMode] = useState<ProductPricingMode>(product?.pricing_mode === "target_margin" ? "target_margin" : "manual_price");
+  const [marginInput, setMarginInput] = useState(() => String(Number(product?.target_margin_percentage ?? 0)));
   const [items, setItems] = useState<RecipeDraftItem[]>([]);
   const recipeLinesRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const quantityValue = (value: string) => Number(value.replace(",", ".")) || 0;
   const estimatedCost = hasRecipe ? Math.round(items.reduce((sum, item) => sum + quantityValue(item.quantity) * (catalog.find((material) => material.id === item.materialId)?.cost ?? 0), 0)) : 0;
-  const salePriceCents = Math.round(pricePesos * 100);
+  const parseInput = (value: string) => { const parsed = Number(value.replace(",", ".")); return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0; };
+  const parsedPrice = parseInput(priceInput);
+  const parsedMargin = parseInput(marginInput);
+  const salePriceCents = pricingMode === "target_margin" ? (estimatedCost > 0 ? Math.round(estimatedCost * (1 + parsedMargin / 100)) : 0) : Math.round(parsedPrice * 100);
   const estimatedProfit = salePriceCents - estimatedCost;
-  const estimatedMargin = salePriceCents > 0 ? estimatedProfit * 100 / salePriceCents : 0;
-  const estimatedPriceFromMargin = estimatedCost > 0 && desiredMargin < 100 ? Math.round(estimatedCost / (1 - desiredMargin / 100)) : 0;
-  function changeDesiredMargin(value: string) {
-    const next = Math.min(99.9, Math.max(0, Number(value.replace(",", ".")) || 0));
-    setDesiredMargin(next);
-    if (estimatedCost > 0) setPricePesos(Number((estimatedCost / 100 / (1 - next / 100)).toFixed(2)));
-  }
+  const estimatedMargin = estimatedCost > 0 && Number.isFinite(salePriceCents) ? estimatedProfit * 100 / estimatedCost : null;
+  const marginDisplay = estimatedMargin === null || !Number.isFinite(estimatedMargin) ? "—" : `${estimatedMargin.toFixed(1)}%`;
 
   useEffect(() => {
     let active = true;
@@ -507,7 +507,7 @@ function ProductFormDialog({ product, onCancel, onSaved, onCreateMaterial }: { p
       const apiMaterials = (materialData.rows ?? []).filter((row) => Boolean(row.active)).map((row) => { const visibleCode = String(row.code), rawName = String(row.material), repeatedPrefix = `${visibleCode} · `; return { id: Number(row.id), code: visibleCode, name: rawName.startsWith(repeatedPrefix) ? rawName.slice(repeatedPrefix.length) : rawName, category: String(row.category ?? "Sin categoría"), categoryId: Number(row.category_id), prefix: String(row.prefix ?? "MAT"), unit: String(row.unit), stock: Number(row.current_stock), minimum: Number(row.minimum_stock), cost: Number(row.current_cost_cents), supplier: String(row.preferred_supplier ?? "Sin proveedor") }; });
       setCatalog(apiMaterials);
       if (definitionData.code) setCode(definitionData.code);
-      if (definitionData.product) { const definition = definitionData.product; setCode(String(definition.code)); setName(String(definition.name)); setPricePesos(Number(definition.sale_price_cents) / 100); setMinimum(Number(definition.minimum_stock)); setNotes(String(definition.notes ?? "")); setHasRecipe(Boolean(definition.recipe_active)); setItems((definitionData.items ?? []).map((item) => ({ materialId: Number(item.material_id), quantity: String(item.quantity) }))); }
+      if (definitionData.product) { const definition = definitionData.product; setCode(String(definition.code)); setName(String(definition.name)); setPriceInput(String(Number(definition.sale_price_cents) / 100)); setPricingMode(definition.pricing_mode === "target_margin" ? "target_margin" : "manual_price"); setMarginInput(String(Number(definition.target_margin_percentage ?? 0))); setMinimum(Number(definition.minimum_stock)); setNotes(String(definition.notes ?? "")); setHasRecipe(Boolean(definition.recipe_active)); setItems((definitionData.items ?? []).map((item) => ({ materialId: Number(item.material_id), quantity: String(item.quantity) }))); }
     }).catch(() => undefined);
     return () => { active = false; };
   }, [product]);
@@ -527,13 +527,15 @@ function ProductFormDialog({ product, onCancel, onSaved, onCreateMaterial }: { p
   function changeItem(index: number, materialId: number) { if (materialId > 0 && items.some((item, itemIndex) => itemIndex !== index && item.materialId === materialId)) { setError("Esa materia prima ya está en la receta."); return; } setItems((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, materialId } : item)); setError(""); }
   async function save() {
     if (!name.trim()) { setError("Ingresá el nombre del producto."); return; }
-    if (pricePesos < 0) { setError("El precio no puede ser negativo."); return; }
+    if (pricingMode === "manual_price" && (!Number.isFinite(parsedPrice) || parsedPrice < 0)) { setError("El precio no puede ser negativo."); return; }
+    if (pricingMode === "target_margin" && (!Number.isFinite(parsedMargin) || parsedMargin < 0)) { setError("El margen deseado no puede ser negativo."); return; }
+    if (pricingMode === "target_margin" && estimatedCost <= 0) { setError("Necesitás un costo válido para calcular el precio por margen."); return; }
     if (hasRecipe && !items.length) { setError("Agregá al menos una materia prima a la receta."); return; }
     if (hasRecipe && items.some((item) => item.materialId <= 0)) { setError("Seleccioná una materia prima en cada fila de la receta."); return; }
     if (hasRecipe && items.some((item) => quantityValue(item.quantity) <= 0)) { setError("Todas las cantidades de la receta deben ser mayores que cero."); return; }
     setSaving(true); setError("");
     try {
-      const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: product ? "update_product_definition" : "save_product_with_recipe", id: product?.id, name, salePriceCents, minimumStock: minimum, notes, hasRecipe, items: hasRecipe ? items.map((item) => ({ materialId: item.materialId, quantity: quantityValue(item.quantity) })) : [] }) });
+      const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: product ? "update_product_definition" : "save_product_with_recipe", id: product?.id, name, salePriceCents, pricingMode, targetMargin: pricingMode === "target_margin" ? parsedMargin : null, minimumStock: minimum, notes, hasRecipe, items: hasRecipe ? items.map((item) => ({ materialId: item.materialId, quantity: quantityValue(item.quantity) })) : [] }) });
       const result = await response.json() as { error?: string; product?: { code?: string; estimated_cost_cents?: number; current_stock?: number } };
       if (!response.ok) throw new Error(result.error ?? "No se pudo crear el producto");
       const savedCode = result.product?.code ?? code;
@@ -547,8 +549,7 @@ function ProductFormDialog({ product, onCancel, onSaved, onCreateMaterial }: { p
        <header><div><p>PRODUCTOS · DEFINICIÓN</p><h2 id="product-form-title">{product ? "Editar producto" : "Nuevo producto"}</h2><span>{product ? "Actualizá la definición sin modificar stock ni historial." : "Definí el producto y, si corresponde, su receta por unidad."}</span></div><button onClick={onCancel} aria-label="Cerrar">×</button></header>
       <div className="inventory-form-body">
          <div className="form-grid"><label className="automatic-code-field"><span>Código</span><input value={code} readOnly aria-describedby="product-code-help" /><small id="product-code-help">{product ? "Código estable · no se modifica" : "Generado automáticamente"}</small></label><label><span>Nombre del producto *</span><input autoFocus value={name} onChange={(event) => setName(event.target.value)} placeholder="Ej. Difusor Lavanda 250 ml" /></label></div>
-         <div className="form-grid"><label><span>Precio de venta ($)</span><input type="number" min="0" step="0.01" value={pricePesos} onChange={(event) => setPricePesos(Math.max(0, Number(event.target.value) || 0))} /></label><label><span>Stock mínimo</span><input type="number" min="0" step="1" value={minimum} onChange={(event) => setMinimum(Math.max(0, Number(event.target.value) || 0))} /></label></div>
-        <section className="product-price-estimator" aria-labelledby="product-price-estimator-title"><header><div><strong id="product-price-estimator-title">Estimación de precio</strong><p>Podés definir el precio y consultar el margen, o indicar un margen para obtener el precio sugerido.</p></div></header><div className="product-price-estimator-fields"><div className="product-price-estimator-result"><span>Margen con el precio ingresado</span><strong>{estimatedMargin.toFixed(1)}%</strong><small>Se calcula sobre el costo estimado actual.</small></div><label><span>Margen deseado</span><div><input type="number" min="0" max="99.9" step="0.1" value={desiredMargin} onChange={(event) => changeDesiredMargin(event.target.value)} /><b>%</b></div></label><div className="product-price-estimator-result"><span>Precio sugerido para ese margen</span><strong>{estimatedPriceFromMargin > 0 ? money(Math.round(estimatedPriceFromMargin * 100) / 100) : "—"}</strong><small>Al cambiar el margen se actualiza el precio de venta.</small></div></div></section>
+         <div className="form-grid"><section className="product-price-estimator" aria-labelledby="product-price-estimator-title"><header><div><strong id="product-price-estimator-title">Cómo definir el precio</strong><p>Elegí si querés cargar el precio manualmente o definir un margen para calcularlo automáticamente.</p></div></header><div className="product-price-estimator-toggle" role="tablist" aria-label="Modo de definición del precio"><button type="button" className={pricingMode === "manual_price" ? "active" : ""} onClick={() => setPricingMode("manual_price")}>Por precio</button><button type="button" className={pricingMode === "target_margin" ? "active" : ""} onClick={() => setPricingMode("target_margin")}>Por margen</button></div><div className="product-price-estimator-fields"><label><span>{pricingMode === "manual_price" ? "Precio de venta ($)" : "Margen deseado (%)"}</span><div><input type="text" inputMode="decimal" min="0" value={pricingMode === "manual_price" ? priceInput : marginInput} onChange={(event) => (pricingMode === "manual_price" ? setPriceInput(event.target.value.replace(/[^0-9.,]/g, "")) : setMarginInput(event.target.value.replace(/[^0-9.,]/g, "")))} /><b>{pricingMode === "manual_price" ? "$" : "%"}</b></div></label><div className="product-price-estimator-result"><span>{pricingMode === "manual_price" ? "Margen estimado" : "Precio de venta calculado"}</span><strong>{pricingMode === "manual_price" ? marginDisplay : estimatedCost > 0 ? money(salePriceCents / 100) : "—"}</strong><small>{pricingMode === "manual_price" ? "KHORA calcula el margen según el costo actual." : estimatedCost > 0 ? "Se actualiza al cambiar el costo o el margen." : "Necesitás un costo válido para calcular el precio por margen."}</small></div></div></section><label><span>Stock mínimo</span><input type="number" min="0" step="1" value={minimum} onChange={(event) => setMinimum(Math.max(0, Number(event.target.value) || 0))} /></label></div>
         <label><span>Notas internas <small>OPCIONAL</small></span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
         <label className="recipe-mode"><input type="checkbox" checked={hasRecipe} onChange={(event) => { setHasRecipe(event.target.checked); setError(""); }} /><span><strong>Producto fabricado</strong><small>Incluye una receta de materias primas. Desmarcá para un producto simple o de reventa.</small></span></label>
         <section className={`recipe-editor recipe-editor-visible ${hasRecipe ? "" : "recipe-editor-disabled"}`} aria-labelledby="recipe-title" data-testid="product-recipe-editor">
@@ -557,7 +558,7 @@ function ProductFormDialog({ product, onCancel, onSaved, onCreateMaterial }: { p
             <div className="recipe-lines" ref={recipeLinesRef} data-testid="recipe-material-list">{items.map((item, index) => { const selected = catalog.find((material) => material.id === item.materialId); const choices = catalog.filter((material) => material.id === item.materialId || !items.some((line, lineIndex) => lineIndex !== index && line.materialId === material.id)); return <article key={`recipe-${index}-${item.materialId}`} data-testid={`recipe-material-row-${index}`}><span className="recipe-line-icon" aria-hidden="true">⚗</span><label><span>Materia prima guardada</span><select value={item.materialId} onChange={(event) => changeItem(index, Number(event.target.value))}><option value={0}>Seleccionar materia prima…</option>{choices.map((material) => <option key={material.id} value={material.id}>{material.code} · {material.name}</option>)}</select><small>{selected?.category ?? "Elegí un insumo guardado"}</small></label><label><span>Cantidad necesaria por unidad</span><div><input aria-label={`Cantidad de ${selected?.name ?? "materia prima"}`} type="text" inputMode="decimal" placeholder="0" value={item.quantity} onChange={(event) => { const value = event.target.value.replace(/[^0-9.,]/g, ""); setItems((current) => current.map((line, lineIndex) => lineIndex === index ? { ...line, quantity: value } : line)); }} /><b>{selected ? (selected.unit === "u." ? "unidad" : selected.unit) : "unidad"}</b></div></label><div className="recipe-line-cost"><span>Costo para esta cantidad</span><strong>{money(Math.round(quantityValue(item.quantity) * (selected?.cost ?? 0)) / 100)}</strong></div><button type="button" aria-label={`Quitar ${selected?.name ?? "materia prima"}`} onClick={() => setItems((current) => current.filter((_, lineIndex) => lineIndex !== index))}>×</button></article>; })}{!items.length && <div className="recipe-empty">Agregá la primera materia prima para comenzar.</div>}</div>
           </>}
         </section>
-        <section className="product-estimate" aria-live="polite"><article><span>Costo estimado actual</span><strong>{money(estimatedCost / 100)}</strong><small>Receta × costos promedio actuales</small></article><article><span>Ganancia estimada</span><strong>{money(estimatedProfit / 100)}</strong><small>Precio − costo estimado</small></article><article><span>Margen estimado</span><strong>{estimatedMargin.toFixed(1)}%</strong><small>Actual, no histórico</small></article></section>
+        <section className="product-estimate" aria-live="polite"><article><span>Costo estimado actual</span><strong>{money(estimatedCost / 100)}</strong><small>Receta × costos promedio actuales</small></article><article><span>Ganancia estimada</span><strong>{money(estimatedProfit / 100)}</strong><small>Precio − costo estimado</small></article><article><span>Margen estimado</span><strong>{marginDisplay}</strong><small>Sobre costo actual, no histórico</small></article></section>
          <div className="material-zero-rule"><span>i</span><p>{product ? "Editar la definición no modifica existencias, lotes, ventas ni costos históricos." : "Crear este producto no modifica inventario, no crea un lote y no registra fabricación."}</p></div>
         {error && <p className="form-error" role="alert">{error}</p>}
       </div>
