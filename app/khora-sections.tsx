@@ -584,7 +584,7 @@ function ComboFormDialog({ combo, onCancel, onSaved }: { combo?: ComboRow; onCan
   const estimatedCostCents = comboItems.reduce((sum, item) => sum + Math.round(Math.max(0, Number(item.quantity) || 0) * (comboCatalog.find((product) => product.id === item.productId)?.costCents ?? 0)), 0) + materialItems.reduce((sum, item) => sum + Math.round(Math.max(0, Number(item.quantity) || 0) * (materialCatalog.find((material) => material.id === item.materialId)?.costCents ?? 0)), 0);
   const salePriceCents = Math.round(pricePesos * 100);
   const estimatedProfitCents = salePriceCents - estimatedCostCents;
-  const estimatedMargin = salePriceCents > 0 ? (estimatedProfitCents / salePriceCents) * 100 : 0;
+  const estimatedMargin = estimatedCostCents > 0 ? (estimatedProfitCents / estimatedCostCents) * 100 : 0;
 
   useEffect(() => { if (combo) return; let active = true; fetch("/api/khora?entity=next_code&kind=COMBO").then((response) => response.ok ? response.json() as Promise<{ code?: string }> : Promise.reject()).then((data) => { if (active && data.code) setCode(data.code); }).catch(() => undefined); return () => { active = false; }; }, [combo]);
   useEffect(() => { let active = true; fetch("/api/khora?entity=lookups").then((response) => response.ok ? response.json() as Promise<{ products?: Array<Record<string, unknown>>; materials?: Array<Record<string, unknown>> }> : Promise.reject()).then((data) => { if (!active) return; setComboCatalog((data.products ?? []).filter((row) => String(row.type) !== "COMBO").map((row) => { const lastCost = Number(row.last_batch_unit_cost_cents ?? 0); return { id: Number(row.id), code: String(row.code), name: String(row.name), costCents: lastCost > 0 ? lastCost : Number(row.estimated_cost_cents ?? 0), salePriceCents: Number(row.sale_price_cents ?? 0) }; })); setMaterialCatalog((data.materials ?? []).map((row) => ({ id: Number(row.id), code: String(row.code), name: String(row.name), unit: String(row.unit), costCents: Number(row.current_cost_cents ?? 0) }))); }).catch(() => undefined); return () => { active = false; }; }, []);
@@ -726,7 +726,7 @@ function ManufactureFormDialog({ initialCode, initialQuantity, onCancel, onSaved
   const unitCost = quantity > 0 ? Math.round(totalCost / quantity) : 0;
   const canConfirm = preview.length > 0 && preview.every((item) => item.available >= item.required);
   const estimatedProfit = (option?.price ?? 0) - unitCost;
-  const margin = option?.price ? estimatedProfit * 100 / option.price : 0;
+  const margin = unitCost > 0 ? estimatedProfit * 100 / unitCost : 0;
 
   useEffect(() => {
     let active = true;
@@ -1319,7 +1319,7 @@ function ComparisonValue({ value, suffix = "" }: { value: number; suffix?: strin
 function ComparisonCard({ label, value, inverse = false }: { label: string; value: number; inverse?: boolean }) { const positive = inverse ? value <= 0 : value >= 0; return <article className={positive ? "positive" : "negative"}><span>{label}</span><strong>{value >= 0 ? "↑" : "↓"} {Math.abs(value).toFixed(1)}%</strong><small>{positive ? "Evolución favorable" : "Revisar variación"}</small></article>; }
 
 function Metric({ label, value, detail, tone, icon, onClick }: { label: string; value: string; detail: string; tone: Tone; icon: KhoraIconName; onClick?: () => void }) { return <button className={`metric-card ${tone}`} onClick={onClick}><div className="metric-icon"><KhoraIcon name={icon} /></div><span>{label}</span><strong>{value}</strong><small>{detail}</small>{onClick && <i className="metric-arrow">→</i>}</button>; }
-function MiniStat({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: Tone }) { return <article className={`mini-stat ${tone}`}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>; }
+function MiniStat({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: Tone }) { const normalizedDetail = detail === "Sobre precio de venta" ? "Sobre costo actual" : detail; return <article className={`mini-stat ${tone}`}><span>{label}</span><strong>{value}</strong><small>{normalizedDetail}</small></article>; }
 function Panel({ title, subtitle, action, children, className = "" }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode; className?: string }) { return <section className={`panel ${className}`}><header className="panel-head"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</header><div className="panel-body">{children}</div></section>; }
 function Badge({ tone = "neutral", children }: { tone?: Tone; children: React.ReactNode }) { return <span className={`badge ${tone}`}><i />{children}</span>; }
 function Avatar({ text, small = false }: { text: string; small?: boolean }) { return <span className={`avatar ${small ? "small" : ""}`}>{text}</span>; }
@@ -1341,7 +1341,7 @@ function Accounts() { return <div className="account-grid"><Panel title="Cuentas
 function Reports() { const reports: Array<{ title: string; detail: string; icon: KhoraIconName }> = [{ title: "Ventas", detail: "Detalle, productos y medios de pago", icon: moduleIcons.ventas }, { title: "Stock", detail: "Productos y materias primas", icon: moduleIcons.stock }, { title: "Ganancias", detail: "Ventas, costos, gastos y margen", icon: moduleIcons.finanzas }, { title: "Clientes", detail: "Actividad e historial de compras", icon: moduleIcons.clientes }, { title: "Fabricación", detail: "Lotes, consumos y costos", icon: moduleIcons.fabricacion }, { title: "Compras y gastos", detail: "Proveedores y movimientos", icon: moduleIcons.compras }]; return <div className="report-grid">{reports.map((report) => <article key={report.title}><span><KhoraIcon name={report.icon} /></span><div><h3>{report.title}</h3><p>{report.detail}</p></div><select aria-label={`Formato para ${report.title}`}><option>Excel</option><option>PDF</option></select><button>Generar</button></article>)}</div>; }
 
 function productCost(product: ProductRow) { return Number(product.last_batch_unit_cost_cents) > 0 ? Number(product.last_batch_unit_cost_cents) : Number(product.estimated_cost_cents) || 0; }
-function productMargin(product: ProductRow) { const price = Number(product.sale_price_cents) || 0, cost = productCost(product); return price > 0 ? ((price - cost) * 100) / price : 0; }
+function productMargin(product: ProductRow) { const price = Number(product.sale_price_cents) || 0, cost = productCost(product); return cost > 0 ? ((price - cost) * 100) / cost : 0; }
 function productTypeLabel(type: string) { return type === "COMBO" ? "Combo" : type === "SIMPLE" ? "Producto simple" : "Fabricado"; }
 function formatDate(value: string) { if (!value) return "—"; const date = new Date(value); return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("es-AR", { day: "2-digit", month: "short", year: "numeric" }).format(date); }
 function initials(name: string) { return name.split(" ").slice(0, 2).map((part) => part[0]).join("").toUpperCase(); }
