@@ -760,3 +760,29 @@ test("las ventas directas se editan o anulan con reversión transaccional y traz
   assert.match(styles, /\.sale-edit-payment/);
   assert.match(styles, /\.sale-detail-summary/);
 });
+
+test("la trazabilidad de fabricación permite editar o anular lotes sin perder historial", async () => {
+  const [route, sections, styles, migration] = await Promise.all([
+    read("app/api/khora/route.ts"),
+    read("app/khora-sections.tsx"),
+    read("app/globals.css"),
+    read("supabase/migrations/202608270001_manufacturing_lot_lifecycle.sql")
+  ]);
+  assert.match(migration, /add column if not exists status/);
+  assert.match(migration, /cancelled_at/);
+  assert.match(migration, /updated_at/);
+  assert.match(migration, /status in \('ACTIVE','CANCELLED'\)/);
+  assert.match(route, /type ManufacturingLotAction/);
+  assert.match(route, /action==="update_manufacturing"/);
+  assert.match(route, /action==="cancel_manufacturing"/);
+  assert.match(route, /COALESCE\(mb\.status,'ACTIVE'\)<>'CANCELLED'/);
+  assert.match(route, /Anulación de producción/);
+  assert.match(route, /Reversión por edición de producción/);
+  assert.match(route, /INSERT INTO audit_logs/);
+  assert.match(sections, /Editar producción/);
+  assert.match(sections, /Anular producción/);
+  assert.match(sections, /className=\{cancelled \? "batch-cancelled"/);
+  assert.match(sections, /Lote anulado/);
+  assert.match(styles, /\.batch-actions-menu/);
+  assert.match(styles, /\.batch-cancelled/);
+});
