@@ -786,3 +786,11 @@ test("la trazabilidad de fabricación permite editar o anular lotes sin perder h
   assert.match(styles, /\.batch-actions-menu/);
   assert.match(styles, /\.batch-cancelled/);
 });
+
+test("la simulación de fabricación mantiene materiales y costos en bloques separados", async () => {
+  const styles = await read("app/globals.css");
+  assert.match(styles, /\.manufacture-form-drawer\{width:min\(1040px,100vw\)\}/);
+  assert.match(styles, /\.manufacture-materials\{display:flex;flex-direction:column;min-height:0;overflow:hidden\}/);
+  assert.match(styles, /\.manufacture-material-list\{flex:0 1 auto;grid-auto-rows:max-content;min-height:132px;[^}]*overflow-y:auto/);
+  assert.doesNotMatch(styles, /\.manufacture-materials\{display:grid;grid-template-rows:auto minmax\(0,1fr\)/);
+});

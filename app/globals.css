@@ -139,7 +139,7 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 @media(max-width:620px){.purchase-create-actions{display:grid;grid-template-columns:1fr}.monthly-close-selectors{display:grid;grid-template-columns:1fr}.monthly-close-selectors select{width:100%}}
 
 /* Fase D · fabricación y snapshots */
-.manufacture-create-row{min-height:66px;border:1px solid #d7e2dc;background:#f0f5f1;border-radius:11px;padding:11px 13px 11px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px}.manufacture-create-row>div{display:grid;gap:3px}.manufacture-create-row strong{font-size:12px}.manufacture-create-row span{font-size:10px;color:var(--muted)}.manufacture-form-drawer{width:min(840px,100vw)}.manufacture-materials{border:1px solid var(--line);border-radius:11px;overflow:hidden}.manufacture-materials>header{min-height:57px;padding:11px 13px;background:#f7f9f6;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.manufacture-materials>header strong{font-size:12px}.manufacture-material-list{padding:8px;display:grid;gap:7px}.manufacture-material-list>article{border:1px solid var(--line);border-radius:9px;padding:10px;display:grid;grid-template-columns:minmax(160px,1fr) 2fr auto;align-items:center;gap:12px}.manufacture-material-list article>div:first-child{display:grid;gap:3px}.manufacture-material-list article>div:first-child span{font-size:8px;color:#557467}.manufacture-material-list article>div:first-child strong{font-size:11px}.manufacture-material-list article>div:first-child small{font-size:9px;color:var(--muted)}.manufacture-material-list dl{margin:0;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.manufacture-material-list dl>div{display:grid;gap:3px}.manufacture-material-list dt{font-size:8px;color:var(--muted)}.manufacture-material-list dd{font-size:10px;font-weight:700;margin:0}.manufacture-cost-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.manufacture-cost-summary article{border:1px solid var(--line);border-radius:9px;padding:10px;display:grid;gap:4px}.manufacture-cost-summary article:nth-child(2),.manufacture-cost-summary article:nth-child(3){background:#edf4ef}.manufacture-cost-summary span{font-size:9px;color:var(--muted)}.manufacture-cost-summary strong{font:17px Georgia,serif}
+.manufacture-create-row{min-height:66px;border:1px solid #d7e2dc;background:#f0f5f1;border-radius:11px;padding:11px 13px 11px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px}.manufacture-create-row>div{display:grid;gap:3px}.manufacture-create-row strong{font-size:12px}.manufacture-create-row span{font-size:10px;color:var(--muted)}.manufacture-form-drawer{width:min(1040px,100vw)}.manufacture-materials{border:1px solid var(--line);border-radius:11px;overflow:hidden}.manufacture-materials>header{min-height:57px;padding:11px 13px;background:#f7f9f6;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.manufacture-materials>header strong{font-size:12px}.manufacture-material-list{padding:8px;display:grid;gap:7px}.manufacture-material-list>article{border:1px solid var(--line);border-radius:9px;padding:10px;display:grid;grid-template-columns:minmax(160px,1fr) 2fr auto;align-items:center;gap:12px}.manufacture-material-list article>div:first-child{display:grid;gap:3px}.manufacture-material-list article>div:first-child span{font-size:8px;color:#557467}.manufacture-material-list article>div:first-child strong{font-size:11px}.manufacture-material-list article>div:first-child small{font-size:9px;color:var(--muted)}.manufacture-material-list dl{margin:0;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.manufacture-material-list dl>div{display:grid;gap:3px}.manufacture-material-list dt{font-size:8px;color:var(--muted)}.manufacture-material-list dd{font-size:10px;font-weight:700;margin:0}.manufacture-cost-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.manufacture-cost-summary article{border:1px solid var(--line);border-radius:9px;padding:10px;display:grid;gap:4px}.manufacture-cost-summary article:nth-child(2),.manufacture-cost-summary article:nth-child(3){background:#edf4ef}.manufacture-cost-summary span{font-size:9px;color:var(--muted)}.manufacture-cost-summary strong{font:17px Georgia,serif}
 @media(max-width:760px){.manufacture-material-list>article{grid-template-columns:1fr auto}.manufacture-material-list dl{grid-column:1/-1}.manufacture-cost-summary{grid-template-columns:1fr 1fr}}
 @media(max-width:620px){.manufacture-create-row{align-items:stretch;display:grid}.manufacture-create-row .primary-button{width:100%}.manufacture-material-list dl{grid-template-columns:1fr 1fr}.manufacture-cost-summary{grid-template-columns:1fr 1fr}}
 /* Venta directa multítem */
@@ -364,11 +364,11 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 .manufacture-material-list dl>div{min-width:0}
 .manufacture-material-list dd{overflow-wrap:anywhere}
 
-/* La lista de materias primas debe conservar una altura visible dentro del
-   modal. Cuando crece, desplaza solo sus filas y no recorta los datos contra
-   el resumen de costos que aparece debajo. */
-.manufacture-materials{display:grid;grid-template-rows:auto minmax(0,1fr);overflow:visible;min-height:0}
-.manufacture-material-list{min-height:132px;max-height:min(360px,calc(100dvh - 380px));overflow-y:auto;overflow-x:hidden;align-content:start}
+/* La sección debe medir el alto real de su lista. La grilla flexible anterior
+   dejaba la fila de materiales fuera del flujo y la superponía al resumen. */
+.manufacture-materials{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.manufacture-materials>header{flex:0 0 auto}
+.manufacture-material-list{flex:0 1 auto;grid-auto-rows:max-content;min-height:132px;max-height:min(360px,calc(100dvh - 380px));overflow-y:auto;overflow-x:hidden;align-content:start;overscroll-behavior:contain;scrollbar-gutter:stable}
 .manufacture-material-list>article{min-height:78px}
 
 @media(max-width:760px){
@@ -392,6 +392,7 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 @media(max-width:430px){
   .manufacture-material-list>article{padding:9px}
   .manufacture-material-list dl{gap:8px 6px}
+  .manufacture-cost-summary{grid-template-columns:1fr}
 }
 
 /* Professional finance reports */
