@@ -354,6 +354,34 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 .price-list-clients-button{width:100%;min-height:36px;border:1px solid #d7e3dc;border-radius:8px;background:#f5f8f6;color:#315d4c;font-size:11px;font-weight:750;cursor:pointer}.price-list-clients-button:hover{background:#eaf2ed}.price-list-client-list{display:grid;gap:7px;padding:9px;border:1px solid #dfe8e2;border-radius:9px;background:#fafcfb}.price-list-client-list>div{min-height:34px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}.price-list-client-list>div>span:not(.avatar):not(.badge){font-size:11px;font-weight:650}.price-list-client-list>p{margin:0;padding:6px;font-size:10px;color:var(--muted);text-align:center}.price-list-form-body{padding:20px;display:grid;gap:15px}.price-list-form-body label{display:grid;gap:6px}.price-list-form-body label>span{font-size:10px;font-weight:750;color:#66766e}.price-list-form-body input{width:100%;height:42px;border:1px solid #dfe4df;border-radius:8px;background:#fff;color:var(--ink);padding:0 11px;outline:0}.price-list-form-body input:focus{border-color:#7f9c8e;box-shadow:0 0 0 3px rgba(73,115,95,.09)}.price-list-primary-fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(110px,.7fr);gap:12px}.price-list-modifier-field{max-width:220px}.price-list-modifier-field small{font-size:9px;color:var(--muted);line-height:1.4}.price-list-modifier-examples{display:grid;grid-template-columns:1fr 1fr;gap:9px}.price-list-modifier-examples>span{min-height:54px;padding:10px 12px;border:1px solid #dce6df;border-radius:9px;background:#f6f9f7;display:grid;gap:3px;color:var(--muted);font-size:10px}.price-list-modifier-examples strong{color:#315d4c;font-size:12px}.price-list-form-body .checkbox-line{display:flex;padding:11px;border:1px solid #e0e6e2;border-radius:9px;background:#fafbfa}.price-list-form-body .checkbox-line input{width:18px;height:18px;flex:none}
 @media(max-width:620px){.product-stock-detail{width:100vw}.product-stock-section>div:first-child{align-items:flex-start;display:grid}.price-list-primary-fields,.price-list-modifier-examples{grid-template-columns:1fr}.price-list-modifier-field{max-width:none}.price-list-form-body{padding:15px}}
 
+/* Fabricación: cada materia prima se muestra como una fila completa y legible.
+   Evitamos el ancho mínimo horizontal que ocultaba los datos dentro del drawer. */
+.manufacture-material-list{overflow:visible;grid-template-columns:minmax(0,1fr)}
+.manufacture-material-list>article{min-width:0;grid-template-columns:minmax(175px,1.1fr) minmax(0,2fr) auto;align-items:center;background:#fff}
+.manufacture-material-list article>div:first-child{min-width:0}
+.manufacture-material-list article>div:first-child strong{line-height:1.3;overflow-wrap:anywhere}
+.manufacture-material-list dl{min-width:0;grid-template-columns:repeat(4,minmax(0,1fr))}
+.manufacture-material-list dl>div{min-width:0}
+.manufacture-material-list dd{overflow-wrap:anywhere}
+
+/* Lotes: el menú se integra en la celda y expande la fila, por lo que nunca
+   se dibuja encima del texto de otra producción. */
+.batch-row-actions{align-items:flex-start}
+.batch-actions-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.batch-actions-menu{position:static;min-width:190px;max-width:min(240px,calc(100vw - 32px));}
+
+@media(max-width:760px){
+  .manufacture-material-list{padding:10px}
+  .manufacture-material-list>article{grid-template-columns:minmax(0,1fr) auto;align-items:start}
+  .manufacture-material-list dl{grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .manufacture-material-list article>.badge{align-self:start}
+}
+
+@media(max-width:430px){
+  .manufacture-material-list>article{padding:9px}
+  .manufacture-material-list dl{gap:8px 6px}
+}
+
 /* Professional finance reports */
 .report-period-card{border:1px solid var(--line);border-radius:15px;background:linear-gradient(135deg,#fff,#f2f7f4);box-shadow:var(--shadow);padding:20px;display:grid;grid-template-columns:minmax(240px,.8fr) minmax(420px,1.5fr);gap:24px;align-items:end}.report-period-card>div:first-child{display:grid;gap:5px}.report-period-card small,.complete-report-card small{font-size:8px;letter-spacing:1.2px;color:#799086}.report-period-card h2,.complete-report-card h2{font:24px Georgia,serif;font-weight:400;margin:0}.report-period-card p,.complete-report-card p{margin:0;color:var(--muted);font-size:11px;line-height:1.5}.report-period-controls{display:grid;grid-template-columns:repeat(3,minmax(130px,1fr));gap:10px;align-items:end}.report-period-controls label{display:grid;gap:5px}.report-period-controls label>span,.report-period-summary>span{font-size:9px;font-weight:750;color:#67776f}.report-period-controls select,.report-period-controls input{height:40px;border:1px solid #dbe4de;border-radius:8px;background:#fff;padding:0 10px;color:var(--ink)}.report-period-summary{min-height:40px;padding:7px 10px;border:1px solid #d2e1d7;border-radius:8px;background:#ebf4ee;display:grid;gap:2px}.report-period-summary strong{font-size:10px;color:#2e5f4b}.report-card-grid.professional{grid-template-columns:repeat(3,minmax(0,1fr))}.report-card-grid.professional .report-card{min-height:210px}.report-card-grid.professional .report-card>div{align-content:start}.report-sheets{margin-top:7px;padding-top:9px;border-top:1px solid #e7ece8;color:#587066;font-size:9px;line-height:1.5}.complete-report-card{min-height:118px;padding:20px 23px;border-radius:15px;background:linear-gradient(120deg,#214d40,#173b32);color:#fff;display:flex;align-items:center;justify-content:space-between;gap:25px}.complete-report-card small{color:#a8beb5}.complete-report-card p{color:#c4d1cc;margin-top:6px}.complete-report-card .primary-button{background:var(--terracotta);white-space:nowrap}.report-security-note{min-height:63px;border:1px solid #cfe0d6;background:#edf5f0;border-radius:11px;padding:12px 15px;display:flex;align-items:center;gap:11px}.report-security-note>span{width:28px;height:28px;border-radius:50%;background:#4e8668;color:#fff;display:grid;place-items:center}.report-security-note>div{display:grid;gap:3px}.report-security-note strong{font-size:12px}.report-security-note p{font-size:10px;color:#617269;margin:0}
 .report-utility-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}.report-utility-actions .secondary-button{width:max-content}
