@@ -139,9 +139,9 @@ input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-ou
 @media(max-width:620px){.purchase-create-actions{display:grid;grid-template-columns:1fr}.monthly-close-selectors{display:grid;grid-template-columns:1fr}.monthly-close-selectors select{width:100%}}
 
 /* Fase D · fabricación y snapshots */
-.manufacture-create-row{min-height:66px;border:1px solid #d7e2dc;background:#f0f5f1;border-radius:11px;padding:11px 13px 11px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px}.manufacture-create-row>div{display:grid;gap:3px}.manufacture-create-row strong{font-size:12px}.manufacture-create-row span{font-size:10px;color:var(--muted)}.manufacture-form-drawer{width:min(1040px,100vw)}.manufacture-materials{border:1px solid var(--line);border-radius:11px;overflow:hidden}.manufacture-materials>header{min-height:57px;padding:11px 13px;background:#f7f9f6;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.manufacture-materials>header strong{font-size:12px}.manufacture-material-list{padding:8px;display:grid;gap:7px}.manufacture-material-list>article{border:1px solid var(--line);border-radius:9px;padding:10px;display:grid;grid-template-columns:minmax(160px,1fr) 2fr auto;align-items:center;gap:12px}.manufacture-material-list article>div:first-child{display:grid;gap:3px}.manufacture-material-list article>div:first-child span{font-size:8px;color:#557467}.manufacture-material-list article>div:first-child strong{font-size:11px}.manufacture-material-list article>div:first-child small{font-size:9px;color:var(--muted)}.manufacture-material-list dl{margin:0;display:grid;grid-template-columns:repeat(4,1fr);gap:6px}.manufacture-material-list dl>div{display:grid;gap:3px}.manufacture-material-list dt{font-size:8px;color:var(--muted)}.manufacture-material-list dd{font-size:10px;font-weight:700;margin:0}.manufacture-cost-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.manufacture-cost-summary article{border:1px solid var(--line);border-radius:9px;padding:10px;display:grid;gap:4px}.manufacture-cost-summary article:nth-child(2),.manufacture-cost-summary article:nth-child(3){background:#edf4ef}.manufacture-cost-summary span{font-size:9px;color:var(--muted)}.manufacture-cost-summary strong{font:17px Georgia,serif}
-@media(max-width:760px){.manufacture-material-list>article{grid-template-columns:1fr auto}.manufacture-material-list dl{grid-column:1/-1}.manufacture-cost-summary{grid-template-columns:1fr 1fr}}
-@media(max-width:620px){.manufacture-create-row{align-items:stretch;display:grid}.manufacture-create-row .primary-button{width:100%}.manufacture-material-list dl{grid-template-columns:1fr 1fr}.manufacture-cost-summary{grid-template-columns:1fr 1fr}}
+.manufacture-create-row{min-height:66px;border:1px solid #d7e2dc;background:#f0f5f1;border-radius:11px;padding:11px 13px 11px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px}.manufacture-create-row>div{display:grid;gap:3px}.manufacture-create-row strong{font-size:12px}.manufacture-create-row span{font-size:10px;color:var(--muted)}.manufacture-form-drawer{width:min(1040px,100vw)}.manufacture-materials{border:1px solid var(--line);border-radius:11px;overflow:hidden}.manufacture-materials>header{min-height:57px;padding:11px 13px;background:#f7f9f6;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.manufacture-materials>header strong{font-size:12px}.manufacture-cost-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.manufacture-cost-summary article{border:1px solid var(--line);border-radius:9px;padding:10px;display:grid;gap:4px}.manufacture-cost-summary article:nth-child(2),.manufacture-cost-summary article:nth-child(3){background:#edf4ef}.manufacture-cost-summary span{font-size:9px;color:var(--muted)}.manufacture-cost-summary strong{font:17px Georgia,serif}
+@media(max-width:760px){.manufacture-cost-summary{grid-template-columns:1fr 1fr}}
+@media(max-width:620px){.manufacture-create-row{align-items:stretch;display:grid}.manufacture-create-row .primary-button{width:100%}.manufacture-cost-summary{grid-template-columns:1fr 1fr}}
 /* Venta directa multítem */
 .sale-create-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(110deg,#edf4ef,#faf6ed)}
 .sale-create-row>div{display:grid;gap:4px}.sale-create-row strong{font-size:14px}.sale-create-row span{font-size:12px;color:var(--muted)}
@@ -335,16 +335,11 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
   .combo-composition-lines article{min-width:0;grid-template-columns:minmax(0,1.25fr) minmax(130px,.9fr) 120px 32px;}
   .combo-composition-lines article>label,.combo-composition-lines select{min-width:0;}
   .combo-composition-lines select{text-overflow:ellipsis;}
-  .manufacture-material-list{overflow-x:auto;}
-  .manufacture-material-list>article{min-width:680px;grid-template-columns:minmax(150px,1.15fr) minmax(330px,2fr) auto;}
-  .manufacture-material-list dl{gap:6px;}
 }
 @media(max-width:760px){
   .combo-composition-lines{max-height:360px;overflow-y:auto;}
   .combo-composition-lines article{grid-template-columns:1fr 1fr;gap:10px;}
   .combo-composition-lines article>button{grid-column:2;justify-self:end;}
-  .manufacture-material-list>article{grid-template-columns:1fr;min-width:0;}
-  .manufacture-material-list dl{grid-template-columns:repeat(2,minmax(0,1fr));}
 }
 .section-toolbar{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 18px;border:1px solid var(--line,#dce5df);border-radius:14px;background:var(--surface,#fff);}
 .section-toolbar>div{display:grid;gap:4px}.section-toolbar span{color:var(--muted,#64756c);font-size:.88rem}.price-list-card-actions{display:flex;align-items:center;gap:8px}.price-list-dialog{max-width:620px}.checkbox-line{display:flex;align-items:center;gap:10px}.checkbox-line input{width:18px;height:18px}.checkbox-line span{font-weight:600}.report-card-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.report-card{display:flex;flex-direction:column;justify-content:space-between;gap:18px;min-height:150px;padding:20px;border:1px solid var(--line,#dce5df);border-radius:16px;background:var(--surface,#fff)}.report-card>div{display:grid;gap:6px}.report-card small{color:var(--muted,#64756c);letter-spacing:.08em;font-size:.68rem}.report-card h2{margin:0;font-size:1.2rem}.report-card p{margin:0;color:var(--muted,#64756c);font-size:.88rem}.report-card button{align-self:flex-start}@media(max-width:900px){.report-card-grid{grid-template-columns:1fr 1fr}}@media(max-width:600px){.section-toolbar{align-items:flex-start;flex-direction:column}.report-card-grid{grid-template-columns:1fr}}
@@ -354,26 +349,36 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 .price-list-clients-button{width:100%;min-height:36px;border:1px solid #d7e3dc;border-radius:8px;background:#f5f8f6;color:#315d4c;font-size:11px;font-weight:750;cursor:pointer}.price-list-clients-button:hover{background:#eaf2ed}.price-list-client-list{display:grid;gap:7px;padding:9px;border:1px solid #dfe8e2;border-radius:9px;background:#fafcfb}.price-list-client-list>div{min-height:34px;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:8px}.price-list-client-list>div>span:not(.avatar):not(.badge){font-size:11px;font-weight:650}.price-list-client-list>p{margin:0;padding:6px;font-size:10px;color:var(--muted);text-align:center}.price-list-form-body{padding:20px;display:grid;gap:15px}.price-list-form-body label{display:grid;gap:6px}.price-list-form-body label>span{font-size:10px;font-weight:750;color:#66766e}.price-list-form-body input{width:100%;height:42px;border:1px solid #dfe4df;border-radius:8px;background:#fff;color:var(--ink);padding:0 11px;outline:0}.price-list-form-body input:focus{border-color:#7f9c8e;box-shadow:0 0 0 3px rgba(73,115,95,.09)}.price-list-primary-fields{display:grid;grid-template-columns:minmax(0,2fr) minmax(110px,.7fr);gap:12px}.price-list-modifier-field{max-width:220px}.price-list-modifier-field small{font-size:9px;color:var(--muted);line-height:1.4}.price-list-modifier-examples{display:grid;grid-template-columns:1fr 1fr;gap:9px}.price-list-modifier-examples>span{min-height:54px;padding:10px 12px;border:1px solid #dce6df;border-radius:9px;background:#f6f9f7;display:grid;gap:3px;color:var(--muted);font-size:10px}.price-list-modifier-examples strong{color:#315d4c;font-size:12px}.price-list-form-body .checkbox-line{display:flex;padding:11px;border:1px solid #e0e6e2;border-radius:9px;background:#fafbfa}.price-list-form-body .checkbox-line input{width:18px;height:18px;flex:none}
 @media(max-width:620px){.product-stock-detail{width:100vw}.product-stock-section>div:first-child{align-items:flex-start;display:grid}.price-list-primary-fields,.price-list-modifier-examples{grid-template-columns:1fr}.price-list-modifier-field{max-width:none}.price-list-form-body{padding:15px}}
 
-/* Fabricación: cada materia prima se muestra como una fila completa y legible.
-   Evitamos el ancho mínimo horizontal que ocultaba los datos dentro del drawer. */
-.manufacture-material-list{overflow:visible;grid-template-columns:minmax(0,1fr)}
-.manufacture-material-list>article{min-width:0;grid-template-columns:minmax(175px,1.1fr) minmax(0,2fr) auto;align-items:center;background:#fff}
-.manufacture-material-list article>div:first-child{min-width:0}
-.manufacture-material-list article>div:first-child strong{line-height:1.3;overflow-wrap:anywhere}
-.manufacture-material-list dl{min-width:0;grid-template-columns:repeat(4,minmax(0,1fr))}
-.manufacture-material-list dl>div{min-width:0}
-.manufacture-material-list dd{overflow-wrap:anywhere}
-
-/* La sección debe medir el alto real de su lista. La grilla flexible anterior
-   dejaba la fila de materiales fuera del flujo y la superponía al resumen. */
+/* Fabricación reutiliza la misma tarjeta visual que la receta del producto.
+   Sigue siendo una vista previa: los campos se representan como solo lectura. */
 .manufacture-materials{display:flex;flex-direction:column;min-height:0;overflow:hidden}
-.manufacture-materials>header{flex:0 0 auto}
-.manufacture-material-list{flex:none;height:clamp(220px,32dvh,360px);min-height:220px;max-height:360px;grid-auto-rows:max-content;overflow-y:auto;overflow-x:hidden;align-content:start;overscroll-behavior:contain;scrollbar-gutter:stable}
-.manufacture-material-list>article{min-height:78px}
+.manufacture-materials>header{flex:0 0 auto;gap:12px}
+.manufacture-materials>header>div{display:grid;gap:3px;min-width:0}
+.manufacture-materials>header p{margin:0;color:var(--muted);font-size:10px}
+.manufacture-material-list{flex:none;height:260px;min-height:260px;max-height:360px;padding:12px;display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;gap:8px;overflow-y:auto;overflow-x:hidden;align-content:start;overscroll-behavior:contain;scrollbar-gutter:stable}
+.manufacture-material-card{min-width:0;min-height:96px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff;display:grid;grid-template-columns:34px minmax(240px,1.45fr) minmax(220px,1fr) minmax(140px,.7fr) auto;gap:9px;align-items:center}
+.manufacture-material-field{min-width:0;display:grid;gap:5px}
+.manufacture-material-field>span,.manufacture-line-cost>span{font-size:9px;font-weight:750;color:#596b62}
+.manufacture-material-field>div{height:42px;min-width:0;border:1px solid #dfe4df;border-radius:8px;background:#fff;padding:0 12px;display:flex;align-items:center;color:var(--ink);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.manufacture-material-field>small,.manufacture-line-cost>small{padding-left:2px;color:#89958f;font-size:8px;line-height:1.35}
+.manufacture-quantity-field{padding:0!important}
+.manufacture-quantity-field>strong{min-width:0;flex:1;padding:0 12px;font-size:13px;font-weight:500}
+.manufacture-quantity-field>b{align-self:stretch;min-width:64px;padding:0 10px;border-left:1px solid #dfe4df;background:#f1f4f2;display:grid;place-items:center;color:#63736b;font-size:9px;white-space:nowrap}
+.manufacture-line-cost{height:auto;min-width:0;padding:0 2px;align-content:center}
+.manufacture-line-cost>strong{font-size:12px}
+.manufacture-material-card>.badge{justify-self:end;white-space:nowrap}
+
+@media(max-width:900px){
+  .manufacture-material-card{grid-template-columns:32px minmax(0,1.35fr) minmax(180px,1fr) minmax(125px,.7fr)}
+  .manufacture-material-card>.badge{grid-column:2/-1;justify-self:start}
+}
 
 @media(max-width:760px){
-  .manufacture-material-list{height:clamp(220px,34dvh,340px);min-height:220px;max-height:340px;}
-  .manufacture-material-list>article{min-height:0;}
+  .manufacture-material-list{height:360px;min-height:360px;max-height:360px;padding:10px}
+  .manufacture-material-card{min-height:0;grid-template-columns:32px minmax(0,1fr);align-items:start;padding:11px}
+  .manufacture-material-card>.manufacture-material-field,.manufacture-material-card>.manufacture-line-cost,.manufacture-material-card>.badge{grid-column:2}
+  .manufacture-material-card>.badge{justify-self:start}
+  .manufacture-material-card>.recipe-line-icon{grid-row:1;align-self:start;margin-top:18px}
 }
 
 /* Lotes: el menú se integra en la celda y expande la fila, por lo que nunca
@@ -382,16 +387,8 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 .batch-actions-wrap{display:flex;flex-direction:column;align-items:flex-end;gap:5px}
 .batch-actions-menu{position:static;min-width:190px;max-width:min(240px,calc(100vw - 32px));}
 
-@media(max-width:760px){
-  .manufacture-material-list{padding:10px}
-  .manufacture-material-list>article{grid-template-columns:minmax(0,1fr) auto;align-items:start}
-  .manufacture-material-list dl{grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr))}
-  .manufacture-material-list article>.badge{align-self:start}
-}
-
 @media(max-width:430px){
-  .manufacture-material-list>article{padding:9px}
-  .manufacture-material-list dl{gap:8px 6px}
+  .manufacture-material-card{padding:9px}
   .manufacture-cost-summary{grid-template-columns:1fr}
 }
 

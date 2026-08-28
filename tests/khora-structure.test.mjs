@@ -789,8 +789,13 @@ test("la trazabilidad de fabricación permite editar o anular lotes sin perder h
 
 test("la simulación de fabricación mantiene materiales y costos en bloques separados", async () => {
   const styles = await read("app/globals.css");
+  const sections = await read("app/khora-sections.tsx");
   assert.match(styles, /\.manufacture-form-drawer\{width:min\(1040px,100vw\)\}/);
   assert.match(styles, /\.manufacture-materials\{display:flex;flex-direction:column;min-height:0;overflow:hidden\}/);
-  assert.match(styles, /\.manufacture-material-list\{flex:none;height:clamp\(220px,32dvh,360px\);min-height:220px;max-height:360px;[^}]*overflow-y:auto/);
+  assert.match(styles, /\.manufacture-material-list\{flex:none;height:260px;min-height:260px;max-height:360px;[^}]*overflow-y:auto/);
+  assert.match(styles, /\.manufacture-material-card\{[^}]*grid-template-columns:34px minmax\(240px,1\.45fr\)/);
+  assert.match(sections, /data-testid="manufacture-material-list"/);
+  assert.match(sections, /className="manufacture-material-field manufacture-material-identity"/);
+  assert.match(sections, /className="manufacture-quantity-field"/);
   assert.doesNotMatch(styles, /\.manufacture-materials\{display:grid;grid-template-rows:auto minmax\(0,1fr\)/);
 });
