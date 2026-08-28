@@ -1,48 +1,48 @@
-export type KhoraPdfInput = {
-  title: string;
-  reference: string;
-  meta: string[];
-  lines: string[];
-  footer?: string;
+/** Dependency-free PDF generation for classic A4 KHORA documents. */
+export type KhoraPdfInput = { title: string; reference: string; meta: string[]; lines: string[]; footer?: string };
+export type KhoraDocumentLine = { quantity: number; code?: string | null; description: string; observation?: string | null; unitPriceCents?: number; subtotalCents?: number };
+export type KhoraStructuredPdfInput = {
+  kind: "REMITO" | "RECEIPT"; documentNumber: string; date: string; time?: string; status?: string;
+  client: { name: string; phone?: string | null; address?: string | null; deliveryCondition?: string | null; origin?: string | null };
+  lines: KhoraDocumentLine[]; subtotalCents?: number; discountCents?: number; shippingCents?: number; totalCents?: number;
+  payment?: { method?: string | null; status?: string | null; totalCents?: number; paidCents?: number; pendingCents?: number };
+  internal?: Array<{ label: string; value: string }>; observations?: string | null;
+  profitability?: { costCents: number; netSaleCents: number; profitCents: number; marginPercent: number }; preparedBy?: string | null;
 };
 
-function ascii(value: string) {
-  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "-").replace(/([\\()])/g, "\\$1");
+const encoder = new TextEncoder(), PAGE_WIDTH = 595, PAGE_HEIGHT = 842;
+const BLACK = "0 0 0 RG 0 0 0 rg";
+function ascii(value: string) { return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\x20-\x7E]/g, "-").replace(/([\\()])/g, "\\$1"); }
+const winAnsi: Record<string, number> = { "á":0xE1,"é":0xE9,"í":0xED,"ó":0xF3,"ú":0xFA,"ü":0xFC,"ñ":0xF1,"Á":0xC1,"É":0xC9,"Í":0xCD,"Ó":0xD3,"Ú":0xDA,"Ü":0xDC,"Ñ":0xD1,"¿":0xBF,"¡":0xA1,"€":0x80,"°":0xB0,"º":0xBA,"·":0xB7,"×":0xD7,"−":0x96 };
+function pdfString(value: string) { if ([...value].every((c) => c.charCodeAt(0) >= 0x20 && c.charCodeAt(0) <= 0x7E)) return `(${value.replace(/([\\()])/g, "\\$1")})`; const bytes=[...value].map((c)=>c.charCodeAt(0)<=0xFF?c.charCodeAt(0):(winAnsi[c]??0x3F)); return `<${bytes.map((b)=>b.toString(16).padStart(2,"0")).join("")}>`; }
+function textLine(value: string, x: number, y: number, size = 10, font = "F1") { return `BT /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td ${pdfString(value)} Tj ET`; }
+function legacyTextLine(value: string, x: number, y: number, size = 10, font = "F1") { return `BT /${font} ${size} Tf ${x.toFixed(2)} ${y.toFixed(2)} Td (${ascii(value)}) Tj ET`; }
+function line(x1:number,y1:number,x2:number,y2:number){return `${x1.toFixed(2)} ${y1.toFixed(2)} m ${x2.toFixed(2)} ${y2.toFixed(2)} l S`;}
+function rect(x:number,y:number,w:number,h:number){return `${x.toFixed(2)} ${y.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S`;}
+function money(cents=0){return `$ ${(Number(cents)/100).toLocaleString("es-AR",{minimumFractionDigits:2,maximumFractionDigits:2})}`;}
+function formatDate(date:string){const m=date.match(/^(\d{4})-(\d{2})-(\d{2})/);return m?`${m[3]}/${m[2]}/${m[1]}`:date;}
+function wrap(value:string,max:number){const words=value.trim().split(/\s+/).filter(Boolean),out:string[]=[];let current="";for(const word of words){if(current&&`${current} ${word}`.length>max){out.push(current);current=word;}else current=current?`${current} ${word}`:word;}if(current)out.push(current);return out.length?out:[""];}
+
+function structuredPages(input: KhoraStructuredPdfInput) {
+  const pages: { commands: string[]; y: number }[] = [{ commands: [], y: 800 }]; const page=()=>pages[pages.length-1]; const newPage=()=>pages.push({commands:[],y:800});
+  const drawHeader=()=>{const p=page();p.commands.push(`${BLACK} ${rect(34,32,527,778)}`,textLine("KHORA",54,778,18,"F2"),textLine("Aromas & Hogar",54,760,10),textLine(input.kind==="REMITO"?"REMITO N.º":"COMPROBANTE INTERNO N.º",365,778,9,"F2"),textLine(input.documentNumber,365,760,13,"F2"),textLine(`Fecha: ${formatDate(input.date)}`,365,742,9));if(input.time)p.commands.push(textLine(`Hora: ${input.time}`,365,728,9));if(input.kind==="RECEIPT"&&input.status)p.commands.push(textLine(`Estado: ${input.status}`,365,714,9,"F2"));p.commands.push(textLine(input.kind==="REMITO"?"REMITO":"COMPROBANTE INTERNO",252,706,14,"F2"),textLine(input.kind==="REMITO"?"DOCUMENTO NO VÁLIDO COMO FACTURA":"DOCUMENTO ADMINISTRATIVO · NO FISCAL",203,691,8),line(54,680,541,680));p.y=657;};
+  const add=(command:string,height=14)=>{if(page().y-height<55){newPage();drawHeader();}page().commands.push(command);page().y-=height;};
+  const drawTableHeader=()=>{const y=page().y;page().commands.push(`${BLACK} ${rect(54,y-18,487,20)}`,textLine("CANT.",60,y-12,8,"F2"),textLine("CÓDIGO",95,y-12,8,"F2"),textLine("PRODUCTO",160,y-12,8,"F2"));if(input.kind==="RECEIPT")page().commands.push(textLine("PRECIO UNIT.",407,y-12,8,"F2"),textLine("SUBTOTAL",483,y-12,8,"F2"));else page().commands.push(textLine("OBS.",475,y-12,8,"F2"));page().y-=24;};
+  drawHeader(); add(textLine(input.kind==="REMITO"?"CLIENTE":"DATOS DEL CLIENTE",54,page().y,10,"F2"),16);
+  const heading=(label:string,value?:string|null)=>{if(value) {add(textLine(label,54,page().y,8,"F2"),11);add(textLine(value,54,page().y,10),15);}};
+  heading("Nombre / Razón social:",input.client.name);heading("Teléfono:",input.client.phone);heading("Dirección:",input.client.address);heading(input.kind==="REMITO"?"Condición de entrega:":"Tipo de entrega:",input.client.deliveryCondition);if(input.kind==="RECEIPT")heading("Origen de la venta:",input.client.origin);add(line(54,page().y+3,541,page().y+3),12);drawTableHeader();
+  for(const item of input.lines){const description=wrap(item.description||"-",input.kind==="RECEIPT"?35:42),rowHeight=Math.max(22,description.length*11+11);if(page().y-rowHeight<90){newPage();drawHeader();drawTableHeader();}const y=page().y;page().commands.push(`${BLACK} ${rect(54,y-rowHeight+4,487,rowHeight)}`,textLine(String(item.quantity),60,y-14,9),textLine(item.code||"-",95,y-14,8));description.forEach((part,index)=>page().commands.push(textLine(part,160,y-14-index*11,9)));if(input.kind==="RECEIPT")page().commands.push(textLine(money(item.unitPriceCents??0),407,y-14,8),textLine(money(item.subtotalCents??0),483,y-14,8));else if(item.observation)page().commands.push(textLine(wrap(item.observation,11)[0],475,y-14,8));page().y-=rowHeight;}
+  add(line(54,page().y+4,541,page().y+4),14);add(textLine(`TOTAL DE UNIDADES: ${input.lines.reduce((sum,item)=>sum+Number(item.quantity||0),0)}`,54,page().y,10,"F2"),20);
+  if(input.kind==="RECEIPT"){add(line(54,page().y+4,541,page().y+4),12);add(textLine("RESUMEN ECONÓMICO",54,page().y,10,"F2"),16);[["Subtotal:",money(input.subtotalCents??input.totalCents??0)],["Descuento:",`-${money(input.discountCents??0)}`],["Envío:",money(input.shippingCents??0)],["TOTAL:",money(input.totalCents??0)]].forEach(([label,value],index)=>add(textLine(`${label} ${value}`,385,page().y,index===3?11:9,index===3?"F2":"F1"),16));
+    if(input.payment){add(textLine("INFORMACIÓN DE PAGO",54,page().y,10,"F2"),16);[["Forma de pago:",input.payment.method],["Estado:",input.payment.status],["Monto total:",money(input.payment.totalCents??input.totalCents??0)],["Monto abonado:",money(input.payment.paidCents??0)],["Saldo pendiente:",money(input.payment.pendingCents??0)]].forEach(([label,value])=>{if(value)add(textLine(`${label} ${value}`,54,page().y,9),14);});}
+    if(input.internal?.length){add(textLine("INFORMACIÓN INTERNA",54,page().y,10,"F2"),16);input.internal.forEach((entry)=>add(textLine(`${entry.label}: ${entry.value}`,54,page().y,9),14));}
+    if(input.profitability){add(textLine("RESUMEN DE RENTABILIDAD (INTERNO)",54,page().y,10,"F2"),16);add(textLine(`Costo total de productos: ${money(input.profitability.costCents)}`,54,page().y,9),14);add(textLine(`Venta neta: ${money(input.profitability.netSaleCents)}`,54,page().y,9),14);add(textLine(`Ganancia estimada: ${money(input.profitability.profitCents)}`,54,page().y,9),14);add(textLine(`Margen de ganancia: ${input.profitability.marginPercent.toFixed(1)} %`,54,page().y,9,"F2"),14);}
+  }
+  if(input.observations){add(textLine("OBSERVACIONES",54,page().y,10,"F2"),16);wrap(input.observations,92).forEach((part)=>add(textLine(part,54,page().y,9),13));}
+  if(input.kind==="REMITO"){add(textLine("Entregado por: ______________________________",54,page().y,9),25);add(textLine("Recibido por: _______________________________",54,page().y,9),25);add(textLine("Firma: ____________________    Fecha: ____ / ____ / ______",54,page().y,9),25);}else{add(textLine("Preparado por: __________________    Revisado por: __________________",54,page().y,9),25);add(textLine("Aprobado por: ___________________    Fecha: ____ / ____ / ______",54,page().y,9),25);if(input.preparedBy)add(textLine(input.preparedBy,54,page().y,8),14);}
+  pages.forEach((p,index)=>{p.commands.push(textLine(input.kind==="REMITO"?"Documento operativo de entrega.":"Este comprobante es interno y no tiene validez fiscal.",54,48,8),textLine(`Página ${index+1} de ${pages.length}`,475,48,8));});return pages;
 }
 
-function textLine(value: string, x: number, y: number, size = 10) {
-  return `BT /F1 ${size} Tf ${x} ${y} Td (${ascii(value)}) Tj ET`;
-}
+function buildPdfFromPages(pageCommands:string[][]){const objects:string[]=[];const ids=pageCommands.map((_,index)=>5+index*2);objects[0]="<< /Type /Catalog /Pages 2 0 R >>";objects[1]=`<< /Type /Pages /Kids [${ids.map((id)=>`${id} 0 R`).join(" ")}] /Count ${pageCommands.length} >>`;objects[2]="<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";objects[3]="<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>";pageCommands.forEach((commands,index)=>{const pageId=ids[index],contentId=pageId+1,content=commands.join("\n");objects[pageId-1]=`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentId} 0 R >>`;objects[contentId-1]=`<< /Length ${encoder.encode(content).length} >>\nstream\n${content}\nendstream`;});let pdf="%PDF-1.4\n";const offsets=[0];objects.forEach((object,index)=>{offsets[index+1]=encoder.encode(pdf).length;pdf+=`${index+1} 0 obj\n${object}\nendobj\n`;});const xref=encoder.encode(pdf).length;pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n${offsets.slice(1).map((offset)=>`${String(offset).padStart(10,"0")} 00000 n `).join("\n")}\ntrailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;return encoder.encode(pdf);}
 
-export function buildKhoraPdf(input: KhoraPdfInput) {
-  const rows = [...input.meta, "", ...input.lines];
-  const pages: string[][] = [];
-  for (let index = 0; index < rows.length; index += 38) pages.push(rows.slice(index, index + 38));
-  if (!pages.length) pages.push([]);
-
-  const objects: string[] = [];
-  const pageObjectIds = pages.map((_, index) => 4 + index * 2);
-  objects[0] = "<< /Type /Catalog /Pages 2 0 R >>";
-  objects[1] = `<< /Type /Pages /Kids [${pageObjectIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pages.length} >>`;
-  objects[2] = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>";
-  pages.forEach((pageRows, pageIndex) => {
-    const pageId = pageObjectIds[pageIndex], contentId = pageId + 1;
-    const content = [
-      textLine("KHORA", 48, 800, 18),
-      textLine(input.title, 48, 775, 15),
-      textLine(input.reference, 48, 755, 10),
-      ...pageRows.map((row, index) => textLine(row, 48, 725 - index * 16, row.startsWith("TOTAL") ? 12 : 9)),
-      textLine(input.footer ?? "Documento interno generado por KHORA", 48, 42, 8),
-      textLine(`Pagina ${pageIndex + 1} de ${pages.length}`, 500, 42, 8),
-    ].join("\n");
-    objects[pageId - 1] = `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`;
-    objects[contentId - 1] = `<< /Length ${new TextEncoder().encode(content).length} >>\nstream\n${content}\nendstream`;
-  });
-
-  let pdf = "%PDF-1.4\n";
-  const offsets = [0];
-  objects.forEach((object, index) => { offsets[index + 1] = new TextEncoder().encode(pdf).length; pdf += `${index + 1} 0 obj\n${object}\nendobj\n`; });
-  const xref = new TextEncoder().encode(pdf).length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map((offset) => `${String(offset).padStart(10, "0")} 00000 n `).join("\n")}\ntrailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-  return new TextEncoder().encode(pdf);
-}
+export function buildKhoraPdf(input:KhoraPdfInput|KhoraStructuredPdfInput){if("kind" in input)return buildPdfFromPages(structuredPages(input).map((page)=>page.commands));const rows=[...input.meta,"",...input.lines],pages:string[][]=[];for(let index=0;index<rows.length;index+=38)pages.push(rows.slice(index,index+38));if(!pages.length)pages.push([]);return buildPdfFromPages(pages.map((pageRows,pageIndex)=>[legacyTextLine("KHORA",48,800,18),legacyTextLine(input.title,48,775,15),legacyTextLine(input.reference,48,755,10),...pageRows.map((row,index)=>legacyTextLine(row,48,725-index*16,row.startsWith("TOTAL")?12:9)),legacyTextLine(input.footer??"Documento interno generado por KHORA",48,42,8),legacyTextLine(`Pagina ${pageIndex+1} de ${pages.length}`,500,42,8)]));}
