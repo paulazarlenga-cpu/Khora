@@ -364,6 +364,18 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 .manufacture-material-list dl>div{min-width:0}
 .manufacture-material-list dd{overflow-wrap:anywhere}
 
+/* La lista de materias primas debe conservar una altura visible dentro del
+   modal. Cuando crece, desplaza solo sus filas y no recorta los datos contra
+   el resumen de costos que aparece debajo. */
+.manufacture-materials{display:grid;grid-template-rows:auto minmax(0,1fr);overflow:visible;min-height:0}
+.manufacture-material-list{min-height:132px;max-height:min(360px,calc(100dvh - 380px));overflow-y:auto;overflow-x:hidden;align-content:start}
+.manufacture-material-list>article{min-height:78px}
+
+@media(max-width:760px){
+  .manufacture-material-list{min-height:144px;max-height:min(340px,calc(100dvh - 300px));}
+  .manufacture-material-list>article{min-height:0;}
+}
+
 /* Lotes: el menú se integra en la celda y expande la fila, por lo que nunca
    se dibuja encima del texto de otra producción. */
 .batch-row-actions{align-items:flex-start}
