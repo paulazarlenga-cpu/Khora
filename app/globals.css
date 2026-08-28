@@ -368,11 +368,11 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
    dejaba la fila de materiales fuera del flujo y la superponía al resumen. */
 .manufacture-materials{display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .manufacture-materials>header{flex:0 0 auto}
-.manufacture-material-list{flex:0 1 auto;grid-auto-rows:max-content;min-height:132px;max-height:min(360px,calc(100dvh - 380px));overflow-y:auto;overflow-x:hidden;align-content:start;overscroll-behavior:contain;scrollbar-gutter:stable}
+.manufacture-material-list{flex:none;height:clamp(220px,32dvh,360px);min-height:220px;max-height:360px;grid-auto-rows:max-content;overflow-y:auto;overflow-x:hidden;align-content:start;overscroll-behavior:contain;scrollbar-gutter:stable}
 .manufacture-material-list>article{min-height:78px}
 
 @media(max-width:760px){
-  .manufacture-material-list{min-height:144px;max-height:min(340px,calc(100dvh - 300px));}
+  .manufacture-material-list{height:clamp(220px,34dvh,340px);min-height:220px;max-height:340px;}
   .manufacture-material-list>article{min-height:0;}
 }
 
