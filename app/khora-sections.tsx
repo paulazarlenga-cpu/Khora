@@ -843,7 +843,9 @@ function Stock({ search }: { search: string }) {
   const [categoryDeleteError, setCategoryDeleteError] = useState<{ kind: "blocked" | "error"; message: string } | null>(null);
   const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null);
   const [notice, setNotice] = useState("");
-  const productRows = productData.rows.filter((item) => includesSearch(item, search));
+  // Los productos archivados se conservan para el historial, pero no deben
+  // aparecer en el stock operativo ni en sus contadores.
+  const productRows = productData.rows.filter((item) => Boolean(item.active) && includesSearch(item, search));
   const visibleMaterials = materialRows.filter((item) => includesSearch(item, search));
 
   useEffect(() => {
