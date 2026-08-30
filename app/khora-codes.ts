@@ -1,4 +1,4 @@
-export type SequentialCodeKind = "PRODUCT" | "COMBO";
+export type SequentialCodeKind = "PRODUCT" | "COMBO" | "MIXTURE";
 
 type ParsedCode = { prefix: string; number: number; width: number };
 
@@ -9,7 +9,7 @@ function parseSequentialCode(value: string): ParsedCode | null {
 }
 
 export function nextSequentialCode(codes: string[], kind: SequentialCodeKind) {
-  const fallback = kind === "COMBO" ? { prefix: "COM-", width: 3 } : { prefix: "PRO-", width: 3 };
+  const fallback = kind === "COMBO" ? { prefix: "COM-", width: 3 } : kind === "MIXTURE" ? { prefix: "MZ-", width: 3 } : { prefix: "PRO-", width: 3 };
   const groups = new Map<string, ParsedCode[]>();
 
   for (const code of codes) {
