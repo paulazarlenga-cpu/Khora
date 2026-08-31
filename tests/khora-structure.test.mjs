@@ -799,3 +799,25 @@ test("la simulación de fabricación mantiene materiales y costos en bloques sep
   assert.match(sections, /className="manufacture-quantity-field"/);
   assert.doesNotMatch(styles, /\.manufacture-materials\{display:grid;grid-template-rows:auto minmax\(0,1fr\)/);
 });
+
+test("la preparación de mezclas usa una cantidad única y conserva FIFO histórico", async () => {
+  const [route, sections, styles, schema] = await Promise.all([
+    read("app/api/khora/route.ts"),
+    read("app/khora-sections.tsx"),
+    read("app/globals.css"),
+    read("db/schema.ts"),
+  ]);
+  assert.match(route, /const mixtureFifoPlan=/);
+  assert.match(route, /const mixtureStockSummary=/);
+  assert.match(route, /entity==="mixture_preview"/);
+  assert.match(route, /stockAfter/);
+  assert.match(route, /action==="prepare_mixture"/);
+  assert.match(route, /waste_percentage=0/);
+  assert.match(sections, /Cantidad a preparar/);
+  assert.doesNotMatch(sections, /Cantidad teórica|Cantidad real|Merma \(%\)/);
+  assert.match(sections, /Stock actual de mezcla/);
+  assert.match(sections, /Stock después de preparar/);
+  assert.match(styles, /\.mixture-stock-summary/);
+  assert.match(schema, /export const mixturePreparations = sqliteTable/);
+  assert.match(schema, /theoreticalQuantity:real\("theoretical_quantity"\)/);
+});
