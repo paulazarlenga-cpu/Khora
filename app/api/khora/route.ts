@@ -6,7 +6,7 @@ import { buildKhoraPdf, type KhoraStructuredPdfInput } from "../../khora-pdf";
 import { calculateFinanceTotals } from "../../khora-finance-core";
 import { createWithGeneratedCode, createWithSequentialCode, nextSequentialCode, type SequentialCodeKind } from "../../khora-codes";
 type Body=Record<string,unknown>;
-type NRow=Record<string,number|string|null> & { current_stock?: number|string|null; material?: number|string|null; material_id?: number|string|null; current_cost_cents?: number|string|null };
+type NRow=Record<string,number|string|null|boolean|undefined> & { current_stock?: number|string|null; material?: number|string|null; material_id?: number|string|null; current_cost_cents?: number|string|null; available?: number|string|null; unit?: string|null; required?: number; subtotal_cents?: number|null; raw_material_id?: number|string|null; material_active?: boolean; cost_available?: boolean };
 type Statement=ReturnType<typeof khoraDb.prepare>;
 const db=()=>khoraDb;
 const n=(v:unknown)=>Number(v);
@@ -62,11 +62,45 @@ const finishedFifoPlanForSaleEdit=async(productId:number,quantity:number,saleId:
 
 type MixtureFifoAllocation={lotId:number;quantity:number;unitCostCents:number;availableQuantity:number;mixtureId:number};
 const mixtureFifoPlan=async(mixtureId:number,quantity:number)=>{
- const rows=(await db().prepare("SELECT id,mixture_id,available_quantity,unit_cost_cents FROM mixture_lots WHERE mixture_id=? AND status='ACTIVE' AND available_quantity>0 ORDER BY prepared_at,id").bind(mixtureId).all()).results as NRow[];
- let remaining=quantity;const allocations:MixtureFifoAllocation[]=[];
- for(const row of rows){if(remaining<=0)break;const available=n(row.available_quantity),taken=Math.min(remaining,available);if(taken>0)allocations.push({lotId:n(row.id),mixtureId:n(row.mixture_id),quantity:taken,unitCostCents:n(row.unit_cost_cents),availableQuantity:available});remaining-=taken;}
- if(remaining>1e-8)throw new Error(`La mezcla no tiene stock suficiente. Faltan ${remaining.toFixed(2)}`);
- return {allocations,totalCostCents:Math.round(allocations.reduce((sum,item)=>sum+item.quantity*item.unitCostCents,0))};
+  const rows=(await db().prepare("SELECT id,mixture_id,available_quantity,unit_cost_cents FROM mixture_lots WHERE mixture_id=? AND status='ACTIVE' AND available_quantity>0 ORDER BY prepared_at,id").bind(mixtureId).all()).results as NRow[];
+  let remaining=quantity;const allocations:MixtureFifoAllocation[]=[];
+  for(const row of rows){if(remaining<=0)break;const available=n(row.available_quantity),taken=Math.min(remaining,available);if(taken>0)allocations.push({lotId:n(row.id),mixtureId:n(row.mixture_id),quantity:taken,unitCostCents:n(row.unit_cost_cents),availableQuantity:available});remaining-=taken;}
+  if(remaining>1e-8)throw new Error(`La mezcla no tiene stock suficiente. Faltan ${remaining.toFixed(2)}`);
+  return {allocations,totalCostCents:Math.round(allocations.reduce((sum,item)=>sum+item.quantity*item.unitCostCents,0))};
+};
+
+type MixtureFormulaCalculation = {
+ formulaCount:number;
+ items:Array<NRow>;
+ formulaConfigured:boolean;
+ formulaComplete:boolean;
+ hasMissingCosts:boolean;
+ totalCostCents:number|null;
+};
+
+const calculateMixtureFormula=async(mixtureId:number,theoretical:number,yieldQuantity:number,preparationId?:number):Promise<MixtureFormulaCalculation>=>{
+ const [countResult,itemResult]=await db().batch([
+  db().prepare("SELECT COUNT(*) formula_count FROM mixture_formula_items WHERE mixture_id=?").bind(mixtureId),
+  db().prepare("SELECT mfi.material_id,mfi.quantity_per_yield,rm.id raw_material_id,rm.active material_active,rm.unit,rm.current_stock,rm.current_cost_cents,cb.active code_active,cb.code,cb.name material FROM mixture_formula_items mfi LEFT JOIN raw_materials rm ON rm.id=mfi.material_id LEFT JOIN code_base cb ON cb.id=rm.code_base_id WHERE mfi.mixture_id=? ORDER BY mfi.id").bind(mixtureId)
+ ]);
+ const formulaCount=n((countResult.results[0] as NRow|undefined)?.formula_count),items=(itemResult.results as NRow[]).map((row)=>{
+  const materialActive=row.raw_material_id!==null&&n(row.material_active)===1&&n(row.code_active)===1;
+  const rawCost=row.current_cost_cents===null||row.current_cost_cents===undefined?null:n(row.current_cost_cents),costAvailable=rawCost!==null&&Number.isFinite(rawCost)&&rawCost>0;
+  const required=n(row.quantity_per_yield)*theoretical/yieldQuantity;
+  return {...row,material_active:materialActive,material:s(row.material)||"Materia prima no disponible",unit:s(row.unit),required,available:materialActive?n(row.current_stock):null,current_cost_cents:rawCost,subtotal_cents:costAvailable?Math.round(required*rawCost):null,cost_available:costAvailable};
+ });
+ if(preparationId){
+  const restored=(await db().prepare("SELECT material_id,quantity_used FROM mixture_preparation_materials WHERE preparation_id=?").bind(preparationId).all()).results as NRow[],restoredByMaterial=new Map(restored.map((row)=>[n(row.material_id),n(row.quantity_used)]));
+  for(const item of items)if(item.available!==null)item.available=n(item.available)+(restoredByMaterial.get(n(item.material_id))??0);
+ }
+ const formulaConfigured=formulaCount>0,formulaComplete=formulaConfigured&&items.length===formulaCount&&items.every((item)=>item.material_active===true),hasMissingCosts=items.some((item)=>item.cost_available!==true),totalCostCents=formulaComplete&&!hasMissingCosts?Math.round(items.reduce((sum,item)=>sum+n(item.subtotal_cents),0)):null;
+ return {formulaCount,items,formulaConfigured,formulaComplete,hasMissingCosts,totalCostCents};
+};
+
+const assertMixtureFormulaReady=(calculation:MixtureFormulaCalculation)=>{
+ if(!calculation.formulaConfigured)throw new Error("La mezcla no tiene materias primas configuradas");
+ if(!calculation.formulaComplete)throw new Error("La fórmula contiene una materia prima inactiva o inexistente");
+ if(calculation.hasMissingCosts)throw new Error("No se puede preparar: una o más materias primas no tienen costo registrado");
 };
 
 const mixtureFifoPlanWithRestored=async(mixtureId:number,quantity:number,restored:Map<number,number>)=>{
@@ -322,24 +356,15 @@ export async function GET(request:Request){try{
    const rows=(await db().prepare("SELECT mm.id,mm.created_at,mm.operation_key,mm.movement_type,mm.quantity_delta,mm.balance_after,mm.unit_cost_cents,mm.reference_table,mm.reference_id,mm.notes,ml.lot_number,m.code,m.name mixture FROM mixture_movements mm JOIN mixture_lots ml ON ml.id=mm.lot_id JOIN mixtures m ON m.id=mm.mixture_id WHERE mm.mixture_id=? ORDER BY mm.created_at DESC,mm.id DESC LIMIT 250").bind(mixtureId).all()).results;return ok({rows});
   }
    if(entity==="mixture_preview"){
-    const mixtureId=n(url.searchParams.get("mixtureId")),theoretical=n(url.searchParams.get("quantity")),requestedActual=url.searchParams.has("actualQuantity")?n(url.searchParams.get("actualQuantity")):null,wasteInput=Math.min(100,Math.max(0,n(url.searchParams.get("wastePercentage")))),preparationId=n(url.searchParams.get("preparationId"));
-    if(!mixtureId||theoretical<=0)return fail("Mezcla o cantidad inválida");
-    const mixture=await db().prepare("SELECT id,code,name,unit,yield_quantity FROM mixtures WHERE id=? AND active=1").bind(mixtureId).first<NRow>();
-    if(!mixture)return fail("Mezcla inexistente");
-    const items=(await db().prepare("SELECT mfi.material_id,cb.code,cb.name material,rm.unit,mfi.quantity_per_yield*?/NULLIF(?,0) required,rm.current_stock available,rm.current_cost_cents,ROUND((mfi.quantity_per_yield*?/NULLIF(?,0))*rm.current_cost_cents) subtotal_cents FROM mixture_formula_items mfi JOIN raw_materials rm ON rm.id=mfi.material_id JOIN code_base cb ON cb.id=rm.code_base_id WHERE mfi.mixture_id=? ORDER BY mfi.id").bind(theoretical,n(mixture.yield_quantity),theoretical,n(mixture.yield_quantity),mixtureId).all()).results as NRow[];
-    // When editing an untouched preparation, its original raw-material consumption
-    // will be returned atomically. Include that amount in the preview so the UI does
-    // not incorrectly block an otherwise valid edit.
-    if(preparationId){
-      const restored=(await db().prepare("SELECT material_id,quantity_used FROM mixture_preparation_materials WHERE preparation_id=?").bind(preparationId).all()).results as NRow[];
-      const restoredByMaterial=new Map(restored.map((row)=>[n(row.material_id),n(row.quantity_used)]));
-      for(const item of items)item.available=n(item.available)+(restoredByMaterial.get(n(item.material_id))??0);
+     const mixtureId=n(url.searchParams.get("mixtureId")),theoretical=n(url.searchParams.get("quantity")),requestedActual=url.searchParams.has("actualQuantity")?n(url.searchParams.get("actualQuantity")):null,wasteInput=Math.min(100,Math.max(0,n(url.searchParams.get("wastePercentage")))),preparationId=n(url.searchParams.get("preparationId"));
+     if(!mixtureId||!Number.isFinite(theoretical)||theoretical<=0)return fail("Mezcla o cantidad inválida");
+     const mixture=await db().prepare("SELECT id,code,name,unit,yield_quantity FROM mixtures WHERE id=? AND active=1").bind(mixtureId).first<NRow>();
+     if(!mixture)return fail("Mezcla inexistente");
+     const actual=requestedActual!==null&&Number.isFinite(requestedActual)?requestedActual:theoretical*(1-wasteInput/100);
+     if(!Number.isFinite(actual)||actual<=0||actual>theoretical)return fail("La cantidad real debe ser mayor que cero y no superar la teórica");
+     const calculation=await calculateMixtureFormula(mixtureId,theoretical,n(mixture.yield_quantity),preparationId),waste=theoretical>0?(1-actual/theoretical)*100:0,totalCostCents=calculation.totalCostCents,unitCostCents=totalCostCents===null?null:Math.round(totalCostCents/actual),stockSufficient=calculation.formulaComplete&&calculation.items.every((item)=>item.available!==null&&n(item.available)>=n(item.required));
+     return ok({mixture,items:calculation.items,formulaCount:calculation.formulaCount,formulaConfigured:calculation.formulaConfigured,formulaComplete:calculation.formulaComplete,hasMissingCosts:calculation.hasMissingCosts,theoreticalQuantity:theoretical,actualQuantity:actual,wasteQuantity:theoretical-actual,wastePercentage:waste,totalCostCents,unitCostCents,canPrepare:calculation.formulaComplete&&!calculation.hasMissingCosts&&stockSufficient});
     }
-    const actual=requestedActual!==null&&Number.isFinite(requestedActual)?requestedActual:theoretical*(1-wasteInput/100);
-    if(actual<=0||actual>theoretical)return fail("La cantidad real debe ser mayor que cero y no superar la teórica");
-    const waste=theoretical>0?(1-actual/theoretical)*100:0,totalCostCents=items.reduce((sum,item)=>sum+n(item.subtotal_cents),0),unitCostCents=actual>0?Math.round(totalCostCents/actual):0;
-    return ok({mixture,items,theoreticalQuantity:theoretical,actualQuantity:actual,wasteQuantity:theoretical-actual,wastePercentage:waste,totalCostCents,unitCostCents,canPrepare:items.length>0&&items.every(item=>n(item.available)>=n(item.required))});
-   }
   if(entity==="fifo_preview"){const productId=n(url.searchParams.get("productId")),quantity=n(url.searchParams.get("quantity"));if(!productId||quantity<=0)return fail("Producto o cantidad inválida");return ok(await finishedFifoPlan(productId,quantity))}
   if(entity==="document_pdf"){const id=n(url.searchParams.get("id")),document=await db().prepare("SELECT filename,status,pdf_base64 FROM sale_documents WHERE id=?").bind(id).first<NRow>();if(!document||document.status!=="GENERATED"||!document.pdf_base64)return fail("Documento no disponible",404);return new Response(base64ToBytes(s(document.pdf_base64)),{headers:{"content-type":"application/pdf","content-disposition":`${url.searchParams.get("download")==="1"?"attachment":"inline"}; filename=\"${s(document.filename)}\"`,"cache-control":"private, no-store","x-content-type-options":"nosniff"}})}
  if(!views[entity])return fail("Módulo desconocido",404);return ok({rows:(await db().prepare(views[entity]).all()).results});
@@ -519,7 +544,12 @@ const manufacturingLotAction=async(action:ManufacturingLotAction,b:Body,actorEma
 };
 
 export async function POST(request:Request){try{const user=await getKhoraUser();if(!user)return fail("No autorizado",401);const b=await request.json() as Body,action=s(b.action),actorEmail=user.email??"sistema";
- if(["sale","update_sale","cancel_sale","cancel_sale_full","delete_sale","update_manufacturing","cancel_manufacturing"].includes(action))await reconcileFinishedStock();
+  if(action==="update_mixture_preparation"){
+   const preparationId=n(b.id),preparation=preparationId?await db().prepare("SELECT mixture_id FROM mixture_preparations WHERE id=?").bind(preparationId).first<NRow>():null,mixtureId=n(preparation?.mixture_id),mixture=mixtureId?await db().prepare("SELECT yield_quantity FROM mixtures WHERE id=? AND active=1").bind(mixtureId).first<NRow>():null;
+   if(!Number.isFinite(n(b.quantity))||n(b.quantity)<=0)throw new Error("La cantidad teórica debe ser mayor que cero");
+   if(mixture){const calculation=await calculateMixtureFormula(mixtureId,n(b.quantity),n(mixture.yield_quantity),preparationId);assertMixtureFormulaReady(calculation);}
+  }
+  if(["sale","update_sale","cancel_sale","cancel_sale_full","delete_sale","update_manufacturing","cancel_manufacturing"].includes(action))await reconcileFinishedStock();
  if(action==="update_manufacturing"||action==="cancel_manufacturing")return ok(await manufacturingLotAction(action,b,actorEmail));
  if(action==="save_mixture"){
   const name=required(b.name,"El nombre"),requestedCode=s(b.code),visibleCode=requestedCode&&requestedCode!=="MIX-NUEVA"?requestedCode:nextSequentialCode(await listMixtureCodes(),"MIXTURE"),unit=s(b.unit)||"u.",yieldQuantity=n(b.yieldQuantity),minimumStock=n(b.minimumStock);if(yieldQuantity<=0)throw new Error("El rendimiento debe ser mayor que cero");if(minimumStock<0)throw new Error("El stock mínimo no puede ser negativo");
@@ -535,9 +565,9 @@ export async function POST(request:Request){try{const user=await getKhoraUser();
    statements.push(db().prepare("UPDATE mixtures SET updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(mixtureId));await db().batch(statements);return ok({ok:true,mixtureId,items:quantities.size});
  }
   if(action==="prepare_mixture"){
-  const mixtureId=n(b.mixtureId),theoretical=n(b.quantity),requestedActual=b.actualQuantity===undefined||b.actualQuantity===null?null:n(b.actualQuantity),wasteInput=Math.min(100,Math.max(0,n(b.wastePercentage)));if(!mixtureId||theoretical<=0)throw new Error("Mezcla o cantidad inválida");const actual=requestedActual===null?theoretical*(1-wasteInput/100):requestedActual;if(actual<=0||actual>theoretical)throw new Error("La cantidad real debe ser mayor que cero y no superar la teórica");const waste=theoretical>0?(1-actual/theoretical)*100:0;
-  const mixture=await db().prepare("SELECT id,code,name,unit,yield_quantity FROM mixtures WHERE id=? AND active=1").bind(mixtureId).first<NRow>();if(!mixture)throw new Error("Mezcla inexistente");const formulas=(await db().prepare("SELECT mfi.material_id,mfi.quantity_per_yield,rm.current_stock,rm.current_cost_cents,cb.name material FROM mixture_formula_items mfi JOIN raw_materials rm ON rm.id=mfi.material_id JOIN code_base cb ON cb.id=rm.code_base_id WHERE mfi.mixture_id=? AND rm.active=1").bind(mixtureId).all()).results as NRow[];if(!formulas.length)throw new Error("La mezcla no tiene materias primas configuradas");
-  const requiredByMaterial=formulas.map(item=>({...item,required:n(item.quantity_per_yield)*theoretical/n(mixture.yield_quantity)}));for(const item of requiredByMaterial)if(n(item.current_stock)<n(item.required))throw new Error(`${s(item.material)}: faltan ${(n(item.required)-n(item.current_stock)).toFixed(2)} ${s(mixture.unit)}`);
+   const mixtureId=n(b.mixtureId),theoretical=n(b.quantity),requestedActual=b.actualQuantity===undefined||b.actualQuantity===null?null:n(b.actualQuantity),wasteInput=Math.min(100,Math.max(0,n(b.wastePercentage)));if(!mixtureId||!Number.isFinite(theoretical)||theoretical<=0)throw new Error("Mezcla o cantidad inválida");const actual=requestedActual===null||!Number.isFinite(requestedActual)?theoretical*(1-wasteInput/100):requestedActual;if(!Number.isFinite(actual)||actual<=0||actual>theoretical)throw new Error("La cantidad real debe ser mayor que cero y no superar la teórica");const waste=theoretical>0?(1-actual/theoretical)*100:0;
+   const mixture=await db().prepare("SELECT id,code,name,unit,yield_quantity FROM mixtures WHERE id=? AND active=1").bind(mixtureId).first<NRow>();if(!mixture)throw new Error("Mezcla inexistente");const calculation=await calculateMixtureFormula(mixtureId,theoretical,n(mixture.yield_quantity));assertMixtureFormulaReady(calculation);const formulas=calculation.items;
+   const requiredByMaterial=formulas.map(item=>({...item,required:n(item.required)}));for(const item of requiredByMaterial)if(item.available===null||n(item.available)<n(item.required))throw new Error(`${s(item.material)}: faltan ${(n(item.required)-n(item.available)).toFixed(2)} ${s(item.unit)}`);
   const totalCostCents=Math.round(requiredByMaterial.reduce((sum,item)=>sum+n(item.required)*n(item.current_cost_cents),0)),unitCostCents=Math.round(totalCostCents/actual),operationKey=uid(),lotNumber=`${s(mixture.code)}-${new Date().toISOString().replace(/[-:TZ.]/g,"").slice(0,14)}-${operationKey.slice(0,4).toUpperCase()}`,preparedAt=s(b.preparedAt)||s(b.date)||new Date().toISOString().slice(0,10),beforeStock=n((await db().prepare("SELECT COALESCE(SUM(available_quantity),0) stock FROM mixture_lots WHERE mixture_id=? AND status='ACTIVE'").bind(mixtureId).first<NRow>())?.stock),q:Statement[]=[db().prepare("INSERT INTO mixture_preparations(operation_key,mixture_id,theoretical_quantity,actual_quantity,waste_quantity,waste_percentage,total_cost_cents,unit_cost_cents,prepared_at,status,notes) VALUES(?,?,?,?,?,?,?,?,?,'CONFIRMED',?)").bind(operationKey,mixtureId,theoretical,actual,theoretical-actual,waste,totalCostCents,unitCostCents,preparedAt,s(b.notes)||null)];
   for(const item of requiredByMaterial){const balance=n(item.current_stock)-n(item.required);q.push(db().prepare("INSERT INTO mixture_preparation_materials(preparation_id,material_id,quantity_used,frozen_unit_cost_cents,frozen_total_cost_cents) VALUES((SELECT id FROM mixture_preparations WHERE operation_key=?),?,?,?,?,?)").bind(operationKey,item.material_id,item.required,item.current_cost_cents,Math.round(n(item.required)*n(item.current_cost_cents))),db().prepare("UPDATE raw_materials SET current_stock=current_stock-? WHERE id=? AND current_stock>=?").bind(item.required,item.material_id,item.required),db().prepare("INSERT INTO stock_movements(operation_key,entity_type,material_id,movement_type,quantity_delta,balance_after,unit_cost_cents,reference_table,reference_id,notes) VALUES(?,'MATERIAL',?,'MANUFACTURE_INPUT',?,?,?,'mixture_preparations',(SELECT id FROM mixture_preparations WHERE operation_key=?),'Consumo para preparar mezcla')").bind(operationKey,item.material_id,-n(item.required),balance,item.current_cost_cents,operationKey))}
   q.push(db().prepare("INSERT INTO mixture_lots(preparation_id,mixture_id,lot_number,initial_quantity,available_quantity,total_cost_cents,unit_cost_cents,prepared_at,status,notes) VALUES((SELECT id FROM mixture_preparations WHERE operation_key=?),?,?,?,?,?,?,?,'ACTIVE',?)").bind(operationKey,mixtureId,lotNumber,actual,actual,totalCostCents,unitCostCents,preparedAt,s(b.notes)||null),db().prepare("INSERT INTO mixture_movements(operation_key,mixture_id,lot_id,movement_type,quantity_delta,balance_after,unit_cost_cents,reference_table,reference_id,notes) VALUES(?,?,(SELECT id FROM mixture_lots WHERE preparation_id=(SELECT id FROM mixture_preparations WHERE operation_key=?)),'PREPARATION_OUTPUT',?,?,?,'mixture_preparations',(SELECT id FROM mixture_preparations WHERE operation_key=?),?)").bind(operationKey,mixtureId,operationKey,actual,beforeStock+actual,unitCostCents,operationKey,"Preparación de mezcla"),db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','MIXTURE_PREPARATION',(SELECT id FROM mixture_preparations WHERE operation_key=?),?,?,?)").bind(operationKey,actorEmail,`Preparación ${lotNumber} confirmada`,JSON.stringify({mixtureId,theoreticalQuantity:theoretical,actualQuantity:actual,wastePercentage:waste,totalCostCents,unitCostCents})));

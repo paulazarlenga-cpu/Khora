@@ -1060,7 +1060,9 @@ function MixtureFormDialog({ mixture, onCancel, onSaved }: { mixture?: MixtureRo
   );
 }
 
-type MixturePreview = { mixture: { code: string; name: string; unit: string; yield_quantity: number }; items: Array<Record<string, unknown>>; theoreticalQuantity: number; actualQuantity: number; wasteQuantity: number; wastePercentage: number; totalCostCents: number; unitCostCents: number; canPrepare: boolean };
+type MixturePreviewItem = { material_id: number; code?: string | null; material: string; unit: string; required: number; available: number | null; current_cost_cents: number | null; subtotal_cents: number | null; material_active: boolean; cost_available: boolean } & Record<string, unknown>;
+type MixturePreview = { mixture: { code: string; name: string; unit: string; yield_quantity: number }; items: MixturePreviewItem[]; formulaCount: number; formulaConfigured: boolean; formulaComplete: boolean; hasMissingCosts: boolean; theoreticalQuantity: number; actualQuantity: number; wasteQuantity: number; wastePercentage: number; totalCostCents: number | null; unitCostCents: number | null; canPrepare: boolean };
+type MixturePreviewStatus = "idle" | "loading" | "ready" | "error";
 
 function MixturePrepareDialog({ mixture: initialMixture, preparation, onCancel, onSaved }: { mixture: MixtureRow; preparation?: MixtureLotRow; onCancel: () => void; onSaved: (message: string) => void }) {
   useDrawerBodyLock();
@@ -1071,22 +1073,93 @@ function MixturePrepareDialog({ mixture: initialMixture, preparation, onCancel, 
   const [wastePercentage, setWastePercentage] = useState(String(preparation?.waste_percentage ?? 0));
   const [notes, setNotes] = useState(preparation?.notes ?? "");
   const [preview, setPreview] = useState<MixturePreview | null>(null);
+  const [previewStatus, setPreviewStatus] = useState<MixturePreviewStatus>("idle");
+  const [previewError, setPreviewError] = useState("");
+  const [loadedPreviewKey, setLoadedPreviewKey] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   useEffect(() => { fetch("/api/khora?entity=mixtures").then(async (response) => { if (!response.ok) throw new Error(); return response.json() as Promise<{ rows?: MixtureRow[] }>; }).then((data) => setMixtures(data.rows ?? [])).catch(() => undefined); }, []);
   const previewAmount = Number(quantity.replace(",", "."));
   const previewActual = Number(actualQuantity.replace(",", "."));
-  const previewInputValid = previewAmount > 0 && previewActual > 0 && mixtureId > 0;
+  const previewInputValid = Number.isFinite(previewAmount) && Number.isFinite(previewActual) && previewAmount > 0 && previewActual > 0 && previewActual <= previewAmount && mixtureId > 0;
+  const previewKey = `${mixtureId}:${previewAmount}:${previewActual}:${preparation?.preparation_id ?? ""}`;
   useEffect(() => {
-    if (!previewInputValid) return;
     let active = true;
-    fetch(`/api/khora?entity=mixture_preview&mixtureId=${mixtureId}&quantity=${previewAmount}&actualQuantity=${previewActual}${preparation ? `&preparationId=${preparation.preparation_id}` : ""}`).then(async (response) => { if (!response.ok) throw new Error(); return response.json() as Promise<MixturePreview>; }).then((data) => { if (active) { setPreview(data); setWastePercentage(String(data.wastePercentage)); } }).catch(() => { if (active) setPreview(null); });
+    if (!previewInputValid) {
+      Promise.resolve().then(() => { if (active) { setPreview(null); setPreviewStatus("idle"); setPreviewError(""); setLoadedPreviewKey(""); } });
+      return () => { active = false; };
+    }
+    Promise.resolve().then(() => { if (active) { setPreviewStatus("loading"); setPreviewError(""); setLoadedPreviewKey(""); } });
+    fetch(`/api/khora?entity=mixture_preview&mixtureId=${mixtureId}&quantity=${previewAmount}&actualQuantity=${previewActual}${preparation ? `&preparationId=${preparation.preparation_id}` : ""}`).then(async (response) => {
+      const data = await response.json() as MixturePreview & { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "No se pudo cargar la fórmula de esta mezcla.");
+      return data;
+    }).then((data) => { if (active) { setPreview(data); setPreviewStatus("ready"); setLoadedPreviewKey(previewKey); setWastePercentage(String(data.wastePercentage)); } }).catch((cause) => { if (active) { setPreview(null); setPreviewStatus("error"); setLoadedPreviewKey(previewKey); setPreviewError(cause instanceof Error ? cause.message : "No se pudo cargar la fórmula de esta mezcla."); } });
     return () => { active = false; };
-  }, [mixtureId, previewAmount, previewActual, previewInputValid, preparation]);
-  async function prepare() { if (!preview?.canPrepare) { setError("No hay stock suficiente para preparar esta mezcla."); return; } setSaving(true); setError(""); try { const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: preparation ? "update_mixture_preparation" : "prepare_mixture", id: preparation?.preparation_id, mixtureId, quantity: Number(quantity.replace(",", ".")), actualQuantity: Number(actualQuantity.replace(",", ".")), wastePercentage: Number(wastePercentage.replace(",", ".")) || 0, notes }) }); const result = await response.json() as { error?: string; lotNumber?: string; actualQuantity?: number; unitCostCents?: number }; if (!response.ok) throw new Error(result.error ?? "No se pudo guardar la preparación."); onSaved(preparation ? `Lote ${preparation.lot_number} actualizado correctamente.` : `Lote ${result.lotNumber ?? "creado"} confirmado · ${formatQuantity(Number(result.actualQuantity ?? preview.actualQuantity))} ${preview.mixture.unit}.`); } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo guardar la preparación."); } finally { setSaving(false); } }
+  }, [mixtureId, previewAmount, previewActual, previewInputValid, previewKey, preparation]);
+  async function prepare() {
+    if (!preview?.canPrepare) {
+      setError(preview?.hasMissingCosts ? "No se puede calcular correctamente el costo: una o más materias primas no tienen costo registrado." : preview && !preview.formulaConfigured ? "Esta mezcla no tiene una fórmula configurada." : preview && !preview.formulaComplete ? "No se pudo cargar la fórmula completa de esta mezcla." : "No hay stock suficiente para preparar esta mezcla.");
+      return;
+    }
+    setSaving(true); setError("");
+    try {
+      const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: preparation ? "update_mixture_preparation" : "prepare_mixture", id: preparation?.preparation_id, mixtureId, quantity: Number(quantity.replace(",", ".")), actualQuantity: Number(actualQuantity.replace(",", ".")), wastePercentage: Number(wastePercentage.replace(",", ".")) || 0, notes }) });
+      const result = await response.json() as { error?: string; lotNumber?: string; actualQuantity?: number };
+      if (!response.ok) throw new Error(result.error ?? "No se pudo guardar la preparación.");
+      onSaved(preparation ? `Lote ${preparation.lot_number} actualizado correctamente.` : `Lote ${result.lotNumber ?? "creado"} confirmado · ${formatQuantity(Number(result.actualQuantity ?? preview.actualQuantity))} ${preview.mixture.unit}.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo guardar la preparación."); } finally { setSaving(false); }
+  }
   const selected = mixtures.find((row) => row.id === mixtureId) ?? initialMixture;
-  const visiblePreview = previewInputValid ? preview : null;
-  return <div className="drawer-layer"><button className="drawer-backdrop" onClick={onCancel} aria-label="Cerrar preparación" /><aside className="inventory-form-drawer mixture-prepare-dialog" role="dialog" aria-modal="true" aria-labelledby="mixture-prepare-title"><header><div><p>PRODUCCIÓN · MEZCLAS</p><h2 id="mixture-prepare-title">{preparation ? "Editar preparación" : "Preparar mezcla"}</h2><span>Calculá materiales, salida real, merma y costo antes de confirmar el lote.</span></div><button onClick={onCancel} aria-label="Cerrar">×</button></header><div className="inventory-form-body"><div className="form-grid"><label><span>Mezcla *</span><select value={mixtureId} onChange={(event) => setMixtureId(Number(event.target.value))}>{mixtures.length ? mixtures.filter((row) => Boolean(Number(row.active) || row.active === true)).map((row) => <option key={row.id} value={row.id}>{row.code} · {row.name}</option>) : <option value={selected.id}>{selected.code} · {selected.name}</option>}</select></label><label><span>Cantidad teórica *</span><input type="text" inputMode="decimal" value={quantity} onChange={(event) => { const value = event.target.value; setQuantity(value); const parsed = Number(value.replace(",", ".")); if (parsed > 0 && Number(actualQuantity.replace(",", ".")) > parsed) setActualQuantity(value); }} /></label><label><span>Cantidad real *</span><input type="text" inputMode="decimal" value={actualQuantity} onChange={(event) => { const value = event.target.value; setActualQuantity(value); const theoretical = Number(quantity.replace(",", ".")), actual = Number(value.replace(",", ".")); if (theoretical > 0 && actual > 0 && actual <= theoretical) setWastePercentage(String(((1 - actual / theoretical) * 100).toFixed(2))); }} /></label><label><span>Merma (%)</span><input type="text" inputMode="decimal" value={wastePercentage} onChange={(event) => { const value = event.target.value; setWastePercentage(value); const theoretical = Number(quantity.replace(",", ".")), waste = Number(value.replace(",", ".")); if (theoretical > 0 && Number.isFinite(waste)) setActualQuantity(String((theoretical * (1 - Math.max(0, Math.min(99.99, waste)) / 100)).toFixed(2))); }} /></label><label><span>Notas del lote</span><input value={notes} onChange={(event) => setNotes(event.target.value)} /></label></div>{visiblePreview && <><section className="mixture-preview"><header><div><strong>Materias primas necesarias</strong><p>Para {formatQuantity(visiblePreview.theoreticalQuantity)} {visiblePreview.mixture.unit} teóricos · salida real {formatQuantity(visiblePreview.actualQuantity)} {visiblePreview.mixture.unit} · merma {visiblePreview.wastePercentage.toFixed(2)}%</p></div><Badge tone={visiblePreview.canPrepare ? "success" : "danger"}>{visiblePreview.canPrepare ? "Stock suficiente" : "Hay faltantes"}</Badge></header><div className="mixture-preview-list">{visiblePreview.items.map((item) => <article key={String(item.material_id)}><div><strong>{String(item.code)} · {String(item.material)}</strong><small>Necesario {formatQuantity(Number(item.required))} {String(item.unit)} · Disponible {formatQuantity(Number(item.available))} {String(item.unit)}</small></div><b>{money(Number(item.subtotal_cents) / 100)}</b></article>)}</div></section><section className="mixture-cost-summary"><article><span>Salida real</span><strong>{formatQuantity(visiblePreview.actualQuantity)} {visiblePreview.mixture.unit}</strong></article><article><span>Costo total</span><strong>{money(visiblePreview.totalCostCents / 100)}</strong></article><article><span>Costo unitario</span><strong>{money(visiblePreview.unitCostCents / 100)} / {visiblePreview.mixture.unit}</strong></article></section></>}{!visiblePreview && <div className="recipe-empty">Ingresá las cantidades para ver los materiales y el costo estimado.</div>}{error && <p className="form-error" role="alert">{error}</p>}<div className="material-zero-rule"><span>i</span><p>La simulación no mueve stock. Al confirmar, se descuenta cada materia prima y se crea un lote trazable con el costo congelado.</p></div></div><footer><button className="secondary-button" onClick={onCancel}>Cancelar</button><button className="primary-button" disabled={saving || !visiblePreview?.canPrepare} onClick={prepare}>{saving ? "Confirmando…" : preparation ? "Guardar cambios" : "Confirmar preparación"}</button></footer></aside></div>;
+  const readyPreview = previewStatus === "ready" && loadedPreviewKey === previewKey ? preview : null;
+  const previewBadgeTone = previewStatus === "loading" ? "info" : previewStatus === "error" ? "danger" : readyPreview?.canPrepare ? "success" : "danger";
+  const previewBadgeLabel = previewStatus === "loading" ? "Cargando…" : previewStatus === "error" ? "No disponible" : readyPreview?.canPrepare ? "Stock suficiente" : readyPreview?.formulaConfigured ? "Revisar fórmula" : "Sin fórmula";
+  return (
+    <div className="drawer-layer">
+      <button className="drawer-backdrop" onClick={onCancel} aria-label="Cerrar preparación" />
+      <aside className="inventory-form-drawer mixture-prepare-dialog" role="dialog" aria-modal="true" aria-labelledby="mixture-prepare-title">
+        <header>
+          <div><p>PRODUCCIÓN · MEZCLAS</p><h2 id="mixture-prepare-title">{preparation ? "Editar preparación" : "Preparar mezcla"}</h2><span>Calculá materiales, salida real, merma y costo antes de confirmar el lote.</span></div>
+          <button onClick={onCancel} aria-label="Cerrar">×</button>
+        </header>
+        <div className="inventory-form-body">
+          <div className="form-grid">
+            <label><span>Mezcla *</span><select value={mixtureId} onChange={(event) => setMixtureId(Number(event.target.value))}>{mixtures.length ? mixtures.filter((row) => Boolean(Number(row.active) || row.active === true)).map((row) => <option key={row.id} value={row.id}>{row.code} · {row.name}</option>) : <option value={selected.id}>{selected.code} · {selected.name}</option>}</select></label>
+            <label><span>Cantidad teórica *</span><input type="text" inputMode="decimal" value={quantity} onChange={(event) => { const value = event.target.value; setQuantity(value); const parsed = Number(value.replace(",", ".")); if (parsed > 0 && Number(actualQuantity.replace(",", ".")) > parsed) setActualQuantity(value); }} /></label>
+            <label><span>Cantidad real *</span><input type="text" inputMode="decimal" value={actualQuantity} onChange={(event) => { const value = event.target.value; setActualQuantity(value); const theoretical = Number(quantity.replace(",", ".")), actual = Number(value.replace(",", ".")); if (theoretical > 0 && actual > 0 && actual <= theoretical) setWastePercentage(String(((1 - actual / theoretical) * 100).toFixed(2))); }} /></label>
+            <label><span>Merma (%)</span><input type="text" inputMode="decimal" value={wastePercentage} readOnly aria-readonly="true" /></label>
+            <label><span>Notas del lote</span><input value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
+          </div>
+          {previewInputValid && <section className="mixture-preview">
+            <header>
+              <div><strong>Materias primas necesarias</strong><p>{readyPreview ? `Para ${formatQuantity(readyPreview.theoreticalQuantity)} ${readyPreview.mixture.unit} teóricos · salida real ${formatQuantity(readyPreview.actualQuantity)} ${readyPreview.mixture.unit} · merma ${readyPreview.wastePercentage.toFixed(2)}%` : "Consultando la fórmula real de la mezcla…"}</p></div>
+              <Badge tone={previewBadgeTone}>{previewBadgeLabel}</Badge>
+            </header>
+            <div className="mixture-preview-list">
+              {previewStatus === "loading" && <div className="mixture-preview-loading" role="status">Cargando materias primas…</div>}
+              {previewStatus === "error" && <div className="mixture-preview-message error" role="alert">{previewError || "No se pudo cargar la fórmula de esta mezcla."}</div>}
+              {readyPreview && !readyPreview.formulaConfigured && <div className="mixture-preview-message" role="status">Esta mezcla no tiene una fórmula configurada.</div>}
+              {readyPreview && readyPreview.formulaConfigured && !readyPreview.formulaComplete && <div className="mixture-preview-message error" role="alert">No se pudo cargar la fórmula completa de esta mezcla.</div>}
+              {readyPreview?.items.map((item) => {
+                const required = Number(item.required), available = item.available === null ? null : Number(item.available), unit = String(item.unit || "unidad"), missing = available === null || available < required, cost = item.current_cost_cents === null ? null : Number(item.current_cost_cents), subtotal = item.subtotal_cents === null ? null : Number(item.subtotal_cents);
+                return <article key={String(item.material_id)} className={missing || cost === null ? "is-invalid" : ""}>
+                  <div className="mixture-preview-item-main"><strong>{String(item.code ?? "Materia prima")} · {String(item.material)}</strong><small>Necesitás {formatQuantity(required)} {unit} · Disponible {available === null ? "—" : `${formatQuantity(available)} ${unit}`}</small></div>
+                  <div className="mixture-preview-item-cost"><small>Costo unitario</small><span>{cost === null || cost <= 0 ? "Sin costo" : `${money(cost / 100)} / ${unit}`}</span></div>
+                  <div className="mixture-preview-item-subtotal"><small>Subtotal</small><b>{subtotal === null ? "—" : money(subtotal / 100)}</b></div>
+                  <span className={`mixture-preview-item-status ${missing || cost === null ? "danger" : "success"}`}>{missing ? `Faltan ${formatQuantity(Math.max(0, required - (available ?? 0)))} ${unit}` : cost === null ? "Sin costo" : "✓ Stock suficiente"}</span>
+                </article>;
+              })}
+              {readyPreview?.hasMissingCosts && <div className="mixture-preview-message error" role="alert">No se puede calcular correctamente el costo de esta preparación porque una o más materias primas no tienen costo.</div>}
+            </div>
+          </section>}
+          {!previewInputValid && <div className="recipe-empty">Ingresá cantidades válidas: la cantidad real debe ser mayor que cero y no superar la teórica.</div>}
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <div className="material-zero-rule"><span>i</span><p>La simulación no mueve stock. Al confirmar, se descuenta cada materia prima y se crea un lote trazable con el costo congelado.</p></div>
+        </div>
+        <footer><button className="secondary-button" onClick={onCancel}>Cancelar</button><button className="primary-button" disabled={saving || !readyPreview?.canPrepare} onClick={prepare}>{saving ? "Confirmando…" : preparation ? "Guardar cambios" : "Confirmar preparación"}</button></footer>
+      </aside>
+    </div>
+  );
 }
 
 function MixtureCancelDialog({ lot, onCancel, onSaved }: { lot: MixtureLotRow; onCancel: () => void; onSaved: (message: string) => void }) {
