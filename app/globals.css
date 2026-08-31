@@ -12,12 +12,21 @@
 .mixture-formula-section {
   min-height: 300px !important;
 }
+.mixture-formula-section > header {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
 .mixture-formula-section > header button {
   flex: 0 0 auto;
   white-space: nowrap;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mixture-formula-list {
   min-height: 190px !important;
+  height: clamp(190px, 40vh, 420px) !important;
   max-height: min(420px, 48vh) !important;
   overflow-y: scroll !important;
   overflow-x: hidden !important;
@@ -25,9 +34,21 @@
   scrollbar-width: thin;
   scrollbar-color: #9bb3a8 #edf3ef;
 }
+.mixture-formula-list::-webkit-scrollbar {
+  width: 12px;
+}
+.mixture-formula-list::-webkit-scrollbar-track {
+  background: #edf3ef;
+  border-radius: 8px;
+}
+.mixture-formula-list::-webkit-scrollbar-thumb {
+  background: #9bb3a8;
+  border: 3px solid #edf3ef;
+  border-radius: 8px;
+}
 @media (max-width: 900px) {
   .mixture-formula-section > header {
-    display: grid;
+    grid-template-columns: 1fr;
     gap: 10px;
   }
   .mixture-formula-section > header button {
