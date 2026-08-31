@@ -607,6 +607,15 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 .product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-mixture-lines{
   padding-top:4px;
 }
+.product-form-drawer>.inventory-form-body{
+  display:flex;
+  flex-direction:column;
+  align-items:stretch;
+  gap:17px;
+}
+.product-form-drawer>.inventory-form-body>*{
+  flex:0 0 auto;
+}
 @media(max-width:620px){
   .product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-mixture-heading{
     align-items:stretch;
