@@ -571,3 +571,47 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 @media(max-width:520px){.finance-insight-list{grid-template-columns:1fr}.finance-bar-item{grid-template-columns:1fr 1fr}.finance-bar-item>i{grid-column:1/-1;grid-row:2}.finance-bar-item>strong{grid-column:2;grid-row:1}.finance-empty-state{align-items:flex-start}.cash-daily-chart article span{grid-template-columns:48px 1fr 65px}}
 
 .recipe-mixture-heading{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:14px 0 6px;padding-top:12px;border-top:1px solid #e1e9e3}.recipe-mixture-heading strong{font-size:11px;color:var(--forest)}.recipe-mixture-heading button{border:0;background:transparent;color:var(--terracotta);font-size:9px;font-weight:800;cursor:pointer}.recipe-mixture-lines{max-height:300px}.mixture-lots-table{overflow:auto;border:1px solid var(--line);border-radius:10px;background:#fff}.mixture-lots-head,.mixture-lot-row{min-width:850px;display:grid;grid-template-columns:1.2fr 1.4fr .8fr .8fr 1fr .9fr 1.8fr;gap:12px;align-items:center;padding:12px 14px}.mixture-lots-head{background:#f1f6f2;border-bottom:1px solid var(--line);font-size:9px;font-weight:800;color:#60736a;text-transform:uppercase;letter-spacing:.4px}.mixture-lot-row{font-size:10px;border-bottom:1px solid #e8ede9}.mixture-lot-row:last-child{border-bottom:0}.mixture-lot-row>span{min-width:0;display:grid;gap:3px;color:var(--ink)}.mixture-lot-row>span small{font-size:8px;color:var(--muted)}.mixture-lot-row>strong{font-size:10px;overflow-wrap:anywhere}.mixture-lot-actions{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}.mixture-lot-actions button{height:28px;padding:0 8px;font-size:8px}.mixture-lot-actions .danger-button{border:1px solid #eccdc8;border-radius:7px;background:#fff5f2;color:#a85248;cursor:pointer}
+
+/* Producto · receta: cada bloque conserva su altura y deja que el cajón sea el
+   único scroll principal. Esto evita que la sección de mezclas se monte sobre
+   la última fila de materias primas cuando la receta es corta o crece. */
+.product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled){
+  height:auto;
+  min-height:0;
+  max-height:none;
+  display:block!important;
+}
+.product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-lines{
+  height:auto;
+  min-height:0;
+  max-height:none;
+  overflow:visible;
+  padding:12px 14px;
+}
+.product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-mixture-heading{
+  margin:0 14px;
+  padding:14px 0 8px;
+  border-top:1px solid #dfe8e2;
+}
+.product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-mixture-heading button{
+  min-height:34px;
+  border:1px solid #c8d9ce;
+  border-radius:8px;
+  background:#edf5ef;
+  color:#315d4c;
+  padding:0 12px;
+  font-size:10px;
+  font-weight:750;
+  white-space:nowrap;
+}
+.product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-mixture-lines{
+  padding-top:4px;
+}
+@media(max-width:620px){
+  .product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-mixture-heading{
+    align-items:stretch;
+    flex-direction:column;
+    gap:8px;
+  }
+  .product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-mixture-heading button{width:100%}
+}

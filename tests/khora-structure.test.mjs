@@ -478,6 +478,8 @@ test("el alta unificada selecciona insumos guardados, cantidades, unidades y có
   assert.match(route, /SELECT cb\.code FROM products p JOIN code_base cb/);
   assert.match(schema, /uniqueIndex\("code_base_code_uq"\)/);
   assert.match(await read("app/globals.css"), /\.recipe-lines\{height:100%;max-height:none;min-height:0;overflow-y:scroll/);
+  assert.match(await read("app/globals.css"), /product-form-drawer \.recipe-editor\.recipe-editor-visible:not\(\.recipe-editor-disabled\)\{[\s\S]*height:auto/);
+  assert.match(await read("app/globals.css"), /product-form-drawer \.recipe-editor\.recipe-editor-visible:not\(\.recipe-editor-disabled\)>\.recipe-lines\{[\s\S]*overflow:visible/);
   assert.match(await read("app/globals.css"), /input\[type="number"\].*-moz-appearance:textfield/);
   assert.match(await read("app/globals.css"), /::-webkit-inner-spin-button/);
   assert.match(await read("app/khora-inventory.ts"), /sin_unidad/);
