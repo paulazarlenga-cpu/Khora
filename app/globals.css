@@ -30,6 +30,9 @@
   max-height: min(420px, 48vh) !important;
   overflow-y: scroll !important;
   overflow-x: hidden !important;
+  padding-bottom: 24px !important;
+  scroll-padding-bottom: 24px;
+  overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
   scrollbar-color: #9bb3a8 #edf3ef;

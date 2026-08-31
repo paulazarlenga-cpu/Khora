@@ -974,7 +974,12 @@ function MixtureFormDialog({ mixture, onCancel, onSaved }: { mixture?: MixtureRo
     if (mixture) fetch(`/api/khora?entity=mixture_definition&id=${mixture.id}`).then(async (response) => { if (!response.ok) throw new Error(); return response.json() as Promise<{ items?: Array<Record<string, unknown>> }>; }).then((data) => { if (active) setFormula((data.items ?? []).map((item) => ({ materialId: Number(item.material_id), quantity: String(item.quantity) }))); }).catch(() => undefined);
     return () => { active = false; };
   }, [mixture]);
-  function addLine() { setFormula((lines) => [...lines, { materialId: materials.find((item) => !lines.some((line) => line.materialId === item.id))?.id ?? 0, quantity: "1" }]); }
+  function addLine() {
+    setFormula((lines) => {
+      const nextMaterial = materials.find((item) => !lines.some((line) => line.materialId === item.id)) ?? materials[0];
+      return [...lines, { materialId: nextMaterial?.id ?? 0, quantity: "1" }];
+    });
+  }
   function updateLine(index: number, patch: Partial<MixtureFormulaLine>) { setFormula((lines) => lines.map((line, lineIndex) => lineIndex === index ? { ...line, ...patch } : line)); }
   async function save() {
     setSaving(true); setError("");
@@ -992,7 +997,67 @@ function MixtureFormDialog({ mixture, onCancel, onSaved }: { mixture?: MixtureRo
       onSaved(mixture ? "Mezcla actualizada correctamente." : "Mezcla creada correctamente.");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo guardar la mezcla."); } finally { setSaving(false); }
   }
-  return <div className="drawer-layer"><button className="drawer-backdrop" onClick={onCancel} aria-label="Cerrar mezcla" /><aside className="inventory-form-drawer mixture-form-dialog" role="dialog" aria-modal="true" aria-labelledby="mixture-form-title"><header><div><p>PRODUCCIÓN · MEZCLAS</p><h2 id="mixture-form-title">{mixture ? "Editar mezcla" : "Nueva mezcla"}</h2><span>Definí el rendimiento, las materias primas y el stock mínimo.</span></div><button onClick={onCancel} aria-label="Cerrar">×</button></header><div className="inventory-form-body"><div className="form-grid"><label><span>Código</span><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} /></label><label><span>Nombre de la mezcla *</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ej. Base aromática" /></label><label><span>Unidad de salida *</span><select value={unit} onChange={(event) => setUnit(event.target.value)}><option value="ml">Mililitro (ml)</option><option value="l">Litro (L)</option><option value="g">Gramo (g)</option><option value="u.">Unidad</option></select></label><label><span>Rendimiento por lote *</span><input type="text" inputMode="decimal" value={yieldQuantity} onChange={(event) => setYieldQuantity(event.target.value)} /></label><label><span>Stock mínimo</span><input type="text" inputMode="decimal" value={minimumStock} onChange={(event) => setMinimumStock(event.target.value)} /></label></div><label className="mixture-notes-field"><span>Notas internas</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observaciones de la fórmula…" /></label><section className="mixture-formula-section"><header><div><strong>Materias primas de la fórmula</strong><p>Las cantidades se expresan para producir el rendimiento indicado.</p></div><button className="secondary-button" type="button" onClick={addLine} disabled={!materials.length || formula.length >= materials.length}>＋ Agregar materia prima</button></header><div className="mixture-formula-list">{formula.map((line, index) => <div className="mixture-formula-row" key={`${index}-${line.materialId}`}><span className="recipe-line-icon" aria-hidden="true">⚗</span><label><span>Materia prima guardada</span><select value={line.materialId} onChange={(event) => updateLine(index, { materialId: Number(event.target.value) })}><option value={0}>Seleccionar materia prima…</option>{materials.filter((item) => item.id === line.materialId || !formula.some((other, otherIndex) => otherIndex !== index && other.materialId === item.id)).map((item) => <option key={item.id} value={item.id}>{item.code} · {item.material}</option>)}</select><small>{materials.find((item) => item.id === line.materialId)?.unit ?? ""} · stock {formatQuantity(materials.find((item) => item.id === line.materialId)?.current_stock ?? 0)}</small></label><label><span>Cantidad por lote</span><input type="text" inputMode="decimal" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} /><small>{materials.find((item) => item.id === line.materialId)?.unit ?? unit}</small></label><button className="icon-button danger" type="button" title="Quitar materia prima" onClick={() => setFormula((lines) => lines.filter((_, lineIndex) => lineIndex !== index))}>×</button></div>)}{!formula.length && <div className="recipe-empty">Agregá la primera materia prima para comenzar la fórmula.</div>}</div></section>{error && <p className="form-error" role="alert">{error}</p>}</div><footer><button className="secondary-button" onClick={onCancel}>Cancelar</button><button className="primary-button" disabled={saving} onClick={save}>{saving ? "Guardando…" : mixture ? "Guardar cambios" : "Crear mezcla"}</button></footer></aside></div>;
+  return (
+    <div className="drawer-layer">
+      <button className="drawer-backdrop" onClick={onCancel} aria-label="Cerrar mezcla" />
+      <aside className="inventory-form-drawer mixture-form-dialog" role="dialog" aria-modal="true" aria-labelledby="mixture-form-title">
+        <header>
+          <div>
+            <p>PRODUCCIÓN · MEZCLAS</p>
+            <h2 id="mixture-form-title">{mixture ? "Editar mezcla" : "Nueva mezcla"}</h2>
+            <span>Definí el rendimiento, las materias primas y el stock mínimo.</span>
+          </div>
+          <button onClick={onCancel} aria-label="Cerrar">×</button>
+        </header>
+        <div className="inventory-form-body">
+          <div className="form-grid">
+            <label><span>Código</span><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} /></label>
+            <label><span>Nombre de la mezcla *</span><input value={name} onChange={(event) => setName(event.target.value)} placeholder="Ej. Base aromática" /></label>
+            <label><span>Unidad de salida *</span><select value={unit} onChange={(event) => setUnit(event.target.value)}><option value="ml">Mililitro (ml)</option><option value="l">Litro (L)</option><option value="g">Gramo (g)</option><option value="u.">Unidad</option></select></label>
+            <label><span>Rendimiento por lote *</span><input type="text" inputMode="decimal" value={yieldQuantity} onChange={(event) => setYieldQuantity(event.target.value)} /></label>
+            <label><span>Stock mínimo</span><input type="text" inputMode="decimal" value={minimumStock} onChange={(event) => setMinimumStock(event.target.value)} /></label>
+          </div>
+          <label className="mixture-notes-field"><span>Notas internas</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Observaciones de la fórmula…" /></label>
+          <section className="mixture-formula-section">
+            <header>
+              <div><strong>Materias primas de la fórmula</strong><p>Las cantidades se expresan para producir el rendimiento indicado.</p></div>
+              <button className="secondary-button" type="button" onClick={addLine} disabled={!materials.length}>＋ Agregar materia prima</button>
+            </header>
+            <div className="mixture-formula-list">
+              {formula.map((line, index) => {
+                const material = materials.find((item) => item.id === line.materialId);
+                return (
+                  <div className="mixture-formula-row" key={`${index}-${line.materialId}`}>
+                    <span className="recipe-line-icon" aria-hidden="true">⚗</span>
+                    <label>
+                      <span>Materia prima guardada</span>
+                      <select value={line.materialId} onChange={(event) => updateLine(index, { materialId: Number(event.target.value) })}>
+                        <option value={0}>Seleccionar materia prima…</option>
+                        {materials.map((item) => <option key={item.id} value={item.id}>{item.code} · {item.material}</option>)}
+                      </select>
+                      <small>{material?.unit ?? ""} · stock {formatQuantity(material?.current_stock ?? 0)}</small>
+                    </label>
+                    <label>
+                      <span>Cantidad por lote</span>
+                      <input type="text" inputMode="decimal" value={line.quantity} onChange={(event) => updateLine(index, { quantity: event.target.value })} />
+                      <small>{material?.unit ?? unit}</small>
+                    </label>
+                    <button className="icon-button danger" type="button" title="Quitar materia prima" onClick={() => setFormula((lines) => lines.filter((_, lineIndex) => lineIndex !== index))}>×</button>
+                  </div>
+                );
+              })}
+              {!formula.length && <div className="recipe-empty">Agregá la primera materia prima para comenzar la fórmula.</div>}
+            </div>
+          </section>
+          {error && <p className="form-error" role="alert">{error}</p>}
+        </div>
+        <footer>
+          <button className="secondary-button" onClick={onCancel}>Cancelar</button>
+          <button className="primary-button" disabled={saving} onClick={save}>{saving ? "Guardando…" : mixture ? "Guardar cambios" : "Crear mezcla"}</button>
+        </footer>
+      </aside>
+    </div>
+  );
 }
 
 type MixturePreview = { mixture: { code: string; name: string; unit: string; yield_quantity: number }; items: Array<Record<string, unknown>>; theoreticalQuantity: number; actualQuantity: number; wasteQuantity: number; wastePercentage: number; totalCostCents: number; unitCostCents: number; canPrepare: boolean };
