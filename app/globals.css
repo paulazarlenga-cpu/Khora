@@ -19,9 +19,23 @@
 .mixture-formula-list {
   min-height: 190px !important;
   max-height: min(420px, 48vh) !important;
-  overflow-y: auto !important;
+  overflow-y: scroll !important;
   overflow-x: hidden !important;
   scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #9bb3a8 #edf3ef;
+}
+@media (max-width: 900px) {
+  .mixture-formula-section > header {
+    display: grid;
+    gap: 10px;
+  }
+  .mixture-formula-section > header button {
+    width: 100%;
+    max-width: 100%;
+    justify-self: stretch;
+    white-space: normal;
+  }
 }
 
 .contact-history-more{justify-self:start;border:0;background:transparent;color:var(--terracotta-dark);font-size:11px;font-weight:750;padding:2px 0;cursor:pointer}.contact-history-more:hover{text-decoration:underline}
