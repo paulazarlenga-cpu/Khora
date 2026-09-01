@@ -16,7 +16,21 @@ export type KhoraIconName =
   | "bell"
   | "chevron-down"
   | "delivery"
-  | "search";
+  | "search"
+  | "plus"
+  | "check"
+  | "pencil"
+  | "trash"
+  | "download"
+  | "printer"
+  | "arrow-left"
+  | "x"
+  | "eye"
+  | "more-horizontal"
+  | "filter"
+  | "save"
+  | "wallet"
+  | "package-check";
 
 export const moduleIcons = {
   inicio: "home",
@@ -52,6 +66,20 @@ const iconPaths: Record<KhoraIconName, React.ReactNode> = {
   "chevron-down": <path d="m6 9 6 6 6-6" />,
   delivery: <><path d="M4 7h10v10H4z" /><path d="M14 10h3l3 3v4h-6z" /><circle cx="8" cy="18" r="2" /><circle cx="18" cy="18" r="2" /><path d="M6 4h6" /></>,
   search: <><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 5 5" /></>,
+  plus: <><path d="M12 5v14M5 12h14" /></>,
+  check: <path d="m5 12 4 4L19 6" />,
+  pencil: <><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20Z" /><path d="m14.5 7.5 2 2" /></>,
+  trash: <><path d="M4 7h16M10 11v6M14 11v6" /><path d="m6 7 1 13h10l1-13M9 7V4h6v3" /></>,
+  download: <><path d="M12 4v11M8 11l4 4 4-4" /><path d="M5 20h14" /></>,
+  printer: <><path d="M6 9V4h12v5M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" /><path d="M6 14h12v6H6z" /></>,
+  "arrow-left": <><path d="M19 12H5M11 6l-6 6 6 6" /></>,
+  x: <><path d="m6 6 12 12M18 6 6 18" /></>,
+  eye: <><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" /><circle cx="12" cy="12" r="2.5" /></>,
+  "more-horizontal": <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
+  filter: <><path d="M4 6h16M7 12h10M10 18h4" /></>,
+  save: <><path d="M5 4h12l2 2v14H5z" /><path d="M8 4v6h8V4M8 20v-6h8v6" /></>,
+  wallet: <><path d="M4 6h15a2 2 0 0 1 2 2v11H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h13" /><path d="M16 13h5" /><circle cx="16" cy="13" r=".5" /></>,
+  "package-check": <><path d="m4 7 8-4 8 4-8 4-8-4Z" /><path d="M4 7v10l8 4 8-4V7M12 11v10" /><path d="m8.5 15 2 2 4-4" /></>,
 };
 
 type KhoraIconProps = Omit<SVGProps<SVGSVGElement>, "name"> & {
