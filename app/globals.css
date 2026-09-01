@@ -664,3 +664,10 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
     min-height:500px;
   }
 }
+
+.mixture-lot-row.is-cancelled{background:#fffaf8}
+.mixture-lot-row.is-cancelled:hover{background:#fff6f3}
+.mixture-lot-row.is-cancelled>strong{color:#8f6d67}
+.mixture-lot-row.is-cancelled .badge.danger{border:1px solid #edc6c0}
+.mixture-lot-actions .mixture-delete-button{min-width:140px;border-color:#e5b8b0;background:#fff1ee;color:#a24b43}
+.mixture-lot-actions .mixture-delete-button:hover{border-color:#c45c51;background:#f9e1dd;color:#913d37}

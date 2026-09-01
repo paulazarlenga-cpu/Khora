@@ -814,11 +814,14 @@ test("la preparación de mezclas usa una cantidad única y conserva FIFO histór
   assert.match(route, /entity==="mixture_preview"/);
   assert.match(route, /stockAfter/);
   assert.match(route, /action==="prepare_mixture"/);
+  assert.match(route, /action==="delete_mixture_preparation"/);
   assert.match(route, /waste_percentage=0/);
   assert.match(sections, /Cantidad a preparar/);
   assert.doesNotMatch(sections, /Cantidad teórica|Cantidad real|Merma \(%\)/);
   assert.match(sections, /Stock actual de mezcla/);
   assert.match(sections, /Stock después de preparar/);
+  assert.match(sections, /MixtureDeleteDialog/);
+  assert.match(sections, /Eliminar lote anulado/);
   assert.match(styles, /\.mixture-stock-summary/);
   assert.match(styles, /\.mixture-prepare-dialog \.mixture-preview\{[\s\S]*display:flex/);
   assert.match(styles, /\.mixture-prepare-dialog \.mixture-preview-list\{[\s\S]*max-height:none !important[\s\S]*overflow-y:auto !important/);
