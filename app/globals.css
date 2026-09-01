@@ -750,6 +750,8 @@ button:disabled{cursor:not-allowed}
 .sales-filter-controls label{height:40px;min-width:185px;display:flex;align-items:center;gap:7px;border:1px solid #e1e5e0;border-radius:8px;background:#fff;padding:0 10px}
 .sales-filter-controls label>span{font-size:8px!important;color:var(--muted);white-space:nowrap}
 .sales-filter-controls select{min-width:0;flex:1;border:0;outline:0;background:transparent;color:var(--ink);font-size:9px;font-weight:700;cursor:pointer}
+.sales-filter-controls input[type="date"],.purchases-filter-controls input[type="date"]{min-width:0;width:112px;flex:0 0 112px;height:28px;border:1px solid #dfe4df;border-radius:6px;background:#fff;color:var(--ink);padding:0 5px;font-size:8px;outline:0}
+.sales-filter-controls input[type="date"]:focus,.purchases-filter-controls input[type="date"]:focus{border-color:#709285;box-shadow:0 0 0 2px #e8efeb}
 .sales-filter-controls select:focus-visible{outline:2px solid #dceae2;outline-offset:2px}
 .sales-filter-controls label:focus-within{border-color:#709285;box-shadow:0 0 0 3px #e8efeb}
 @media(max-width:760px){.sales-toolbar{align-items:stretch;display:grid}.sales-toolbar>.sales-search-field{width:100%}.sales-filter-controls{margin-left:0;display:grid;grid-template-columns:1fr 1fr}.sales-filter-controls label{min-width:0;width:100%}.sales-filter-controls select{width:100%}}
