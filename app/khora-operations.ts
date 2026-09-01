@@ -1,33 +1,62 @@
 import { SectionId, Tone } from "./khora-data";
 import { moduleIcons, type KhoraIconName } from "./khora-icons";
+import { getStockAlertSummary, getStockStatus, type StockAlertSummary } from "./khora-inventory";
 
 export type NavigationIntent = { section: SectionId; query?: string };
 export type OperationalPriority = "critical" | "attention" | "information";
 export type AgendaItem = { id: string; label: string; detail: string; count: number; icon: KhoraIconName; tone: Tone; destination: NavigationIntent };
-export type OperationalAlert = { id: string; priority: OperationalPriority; title: string; detail: string; action: string; tone: Tone; destination: NavigationIntent };
+export type OperationalAlert = { id: string; priority: OperationalPriority; title: string; detail: string; action: string; tone: Tone; destination: NavigationIntent; dismissible?: boolean };
 export type SearchCategory = "Clientes" | "Productos" | "Materias primas" | "Lotes" | "Proveedores" | "Mezclas";
 export type GlobalSearchResult = { id: string; category: SearchCategory; title: string; subtitle: string; icon: KhoraIconName; destination: NavigationIntent };
 
 type RealRow = Record<string, unknown>;
 export type OperationalData = { clients: RealRow[]; products: RealRow[]; materials: RealRow[]; batches: RealRow[]; suppliers: RealRow[]; purchases: RealRow[]; mixtures: RealRow[] };
 export const emptyOperationalData: OperationalData = { clients: [], products: [], materials: [], batches: [], suppliers: [], purchases: [], mixtures: [] };
+export type OperationalStockAlerts = { products: StockAlertSummary; materials: StockAlertSummary; mixtures: StockAlertSummary; summary: StockAlertSummary };
 
 const text = (value: unknown) => String(value ?? "");
 const numeric = (value: unknown) => Number(value ?? 0);
 
 export function getOperationalOverview(data: OperationalData) {
-  const criticalMaterials = data.materials.filter((material) => Boolean(material.active) && numeric(material.minimum_stock) > 0 && numeric(material.current_stock) < numeric(material.minimum_stock));
+  const isActive = (row: RealRow) => row.active === true || numeric(row.active) === 1;
+  const activeProducts = data.products.filter(isActive);
+  const activeMaterials = data.materials.filter(isActive);
+  const activeMixtures = data.mixtures.filter(isActive);
+  const stockAlerts: OperationalStockAlerts = {
+    products: getStockAlertSummary(activeProducts, (row) => ({ stock: numeric(row.current_stock), minimum: numeric(row.minimum_stock) })),
+    materials: getStockAlertSummary(activeMaterials, (row) => ({ stock: numeric(row.current_stock), minimum: numeric(row.minimum_stock) })),
+    mixtures: getStockAlertSummary(activeMixtures, (row) => ({ stock: numeric(row.current_stock), minimum: numeric(row.minimum_stock) })),
+    summary: { lowCount: 0, outCount: 0, problemCount: 0, severity: "normal" },
+  };
+  const lowCount = stockAlerts.products.lowCount + stockAlerts.materials.lowCount + stockAlerts.mixtures.lowCount;
+  const outCount = stockAlerts.products.outCount + stockAlerts.materials.outCount + stockAlerts.mixtures.outCount;
+  stockAlerts.summary = { lowCount, outCount, problemCount: lowCount + outCount, severity: outCount > 0 ? "out" : lowCount > 0 ? "low" : "normal" };
+  const stockTone: Tone = stockAlerts.summary.severity === "out" ? "danger" : stockAlerts.summary.severity === "low" ? "warning" : "info";
   const pendingPurchases = data.purchases.filter((purchase) => text(purchase.payment_status).toUpperCase() !== "PAID" && text(purchase.status) !== "Anulada");
   const agenda: AgendaItem[] = [
     { id: "manufacture", label: "planificador de fabricación", detail: "Revisar necesidades de producción", count: 0, icon: moduleIcons.fabricacion, tone: "info", destination: { section: "fabricacion" } },
-    { id: "buy", label: "materias primas por comprar", detail: "Stock por debajo del mínimo", count: criticalMaterials.length, icon: moduleIcons.stock, tone: "danger", destination: { section: "stock" } },
+    { id: "buy", label: "materias primas por comprar", detail: "Stock en poco o sin stock", count: stockAlerts.materials.problemCount, icon: moduleIcons.stock, tone: stockAlerts.materials.severity === "out" ? "danger" : stockAlerts.materials.severity === "low" ? "warning" : "info", destination: { section: "stock" } },
     { id: "pay", label: "compras con pago pendiente", detail: "Seguimiento de pagos", count: pendingPurchases.length, icon: moduleIcons.ventas, tone: "warning", destination: { section: "finanzas" } },
   ];
   const alerts: OperationalAlert[] = [
-    ...criticalMaterials.map((material) => ({ id: `material-${text(material.id)}`, priority: "critical" as const, title: `${text(material.material)} por debajo del mínimo`, detail: `Quedan ${numeric(material.current_stock)} ${text(material.unit)} · mínimo ${numeric(material.minimum_stock)}`, action: "Ver materia prima", tone: "danger" as Tone, destination: { section: "stock" as SectionId, query: text(material.material) } })),
+    ...activeProducts.flatMap((product) => {
+      const status = getStockStatus(numeric(product.current_stock), numeric(product.minimum_stock));
+      if (status === "normal") return [];
+      return [{ id: `product-${text(product.id)}`, priority: status === "out" ? "critical" as const : "attention" as const, title: status === "out" ? `${text(product.name)} sin stock` : `${text(product.name)} con poco stock`, detail: `Quedan ${numeric(product.current_stock)} u. · mínimo ${numeric(product.minimum_stock)}`, action: "Ver producto", tone: status === "out" ? "danger" as Tone : "warning" as Tone, destination: { section: "stock" as SectionId, query: text(product.name) }, dismissible: false }];
+    }),
+    ...activeMaterials.flatMap((material) => {
+      const status = getStockStatus(numeric(material.current_stock), numeric(material.minimum_stock));
+      if (status === "normal") return [];
+      return [{ id: `material-${text(material.id)}`, priority: status === "out" ? "critical" as const : "attention" as const, title: status === "out" ? `${text(material.material)} sin stock` : `${text(material.material)} con poco stock`, detail: `Quedan ${numeric(material.current_stock)} ${text(material.unit)} · mínimo ${numeric(material.minimum_stock)}`, action: "Ver materia prima", tone: status === "out" ? "danger" as Tone : "warning" as Tone, destination: { section: "stock" as SectionId, query: text(material.material) }, dismissible: false }];
+    }),
+    ...activeMixtures.flatMap((mixture) => {
+      const status = getStockStatus(numeric(mixture.current_stock), numeric(mixture.minimum_stock));
+      if (status === "normal") return [];
+      return [{ id: `mixture-${text(mixture.id)}`, priority: status === "out" ? "critical" as const : "attention" as const, title: status === "out" ? `${text(mixture.name)} sin stock` : `${text(mixture.name)} con poco stock`, detail: `Quedan ${numeric(mixture.current_stock)} ${text(mixture.unit)} · mínimo ${numeric(mixture.minimum_stock)}`, action: "Ver mezcla", tone: status === "out" ? "danger" as Tone : "warning" as Tone, destination: { section: "stock" as SectionId, query: text(mixture.name) }, dismissible: false }];
+    }),
     ...pendingPurchases.map((purchase) => ({ id: `purchase-${text(purchase.id)}`, priority: "attention" as const, title: `Compra C-${text(purchase.id)} pendiente`, detail: `${text(purchase.supplier) || "Sin proveedor"} · ${text(purchase.material)}`, action: "Abrir compra", tone: "warning" as Tone, destination: { section: "compras" as SectionId, query: `C-${text(purchase.id)}` } })),
   ];
-  return { agenda, alerts };
+  return { agenda, alerts, stockAlerts, stockSeverity: stockAlerts.summary.severity, stockTone };
 }
 
 export function searchKhora(rawQuery: string, data: OperationalData): GlobalSearchResult[] {

@@ -65,9 +65,55 @@ export function suggestMaterialCode(prefix: string, existingCodes: string[]) {
   return `${safePrefix}-${String(sequence).padStart(3, "0")}`;
 }
 
+export type StockStatus = "normal" | "low" | "out";
+
+export type StockAlertSummary = {
+  lowCount: number;
+  outCount: number;
+  problemCount: number;
+  severity: StockStatus;
+};
+
+type StockItemLike = {
+  stock?: unknown;
+  current_stock?: unknown;
+  minimum?: unknown;
+  minimum_stock?: unknown;
+};
+
+function finiteStockValue(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function getStockStatus(stock: number, minimum: number): StockStatus;
+export function getStockStatus(item: StockItemLike): StockStatus;
+export function getStockStatus(stockOrItem: number | StockItemLike, minimum?: number): StockStatus {
+  const stock = typeof stockOrItem === "number" ? stockOrItem : stockOrItem.current_stock ?? stockOrItem.stock;
+  const minimumValue = typeof stockOrItem === "number" ? minimum : stockOrItem.minimum_stock ?? stockOrItem.minimum;
+  const current = finiteStockValue(stock);
+  const limit = finiteStockValue(minimumValue);
+  if (current <= 0) return "out";
+  if (current <= limit) return "low";
+  return "normal";
+}
+
+export function getStockAlertSummary<T extends StockItemLike>(items: T[], read?: (item: T) => { stock: number; minimum: number }): StockAlertSummary {
+  let lowCount = 0;
+  let outCount = 0;
+  for (const item of items) {
+    const values = read ? read(item) : { stock: finiteStockValue(item.current_stock ?? item.stock), minimum: finiteStockValue(item.minimum_stock ?? item.minimum) };
+    const status = getStockStatus(values.stock, values.minimum);
+    if (status === "out") outCount += 1;
+    else if (status === "low") lowCount += 1;
+  }
+  return { lowCount, outCount, problemCount: lowCount + outCount, severity: outCount > 0 ? "out" : lowCount > 0 ? "low" : "normal" };
+}
+
 export function materialStockStatus(stock: number, minimum: number) {
-  if (stock <= 0) return { label: "Agotado", tone: "danger" as const };
-  if (minimum > 0 && stock <= minimum * 1.25) return { label: "Poco stock", tone: "warning" as const };
+  const status = getStockStatus(stock, minimum);
+  if (status === "out") return { label: "Agotado", tone: "danger" as const };
+  if (status === "low") return { label: "Poco stock", tone: "warning" as const };
   return { label: "Disponible", tone: "success" as const };
 }
 
