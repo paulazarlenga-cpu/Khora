@@ -624,3 +624,43 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
   }
   .product-form-drawer .recipe-editor.recipe-editor-visible:not(.recipe-editor-disabled)>.recipe-mixture-heading button{width:100%}
 }
+
+/* Preparación de mezclas: el listado crece dentro de un área propia y los
+   indicadores de stock/costo permanecen visibles en la base del cuadro. */
+.mixture-prepare-dialog > .inventory-form-body{
+  min-height:0;
+}
+.mixture-prepare-dialog .mixture-preview{
+  display:flex;
+  flex-direction:column;
+  min-height:360px;
+  height:clamp(360px, calc(100dvh - 285px), 560px);
+  max-height:none;
+}
+.mixture-prepare-dialog .mixture-preview > header{
+  flex:0 0 auto;
+}
+.mixture-prepare-dialog .mixture-preview-list{
+  flex:1 1 auto;
+  min-height:120px;
+  max-height:none !important;
+  overflow-y:auto !important;
+  overflow-x:hidden !important;
+  scrollbar-gutter:stable;
+  scrollbar-width:thin;
+  scrollbar-color:#9bb3a8 #edf3ef;
+}
+.mixture-prepare-dialog .mixture-preview-list::-webkit-scrollbar{width:12px}
+.mixture-prepare-dialog .mixture-preview-list::-webkit-scrollbar-track{background:#edf3ef;border-radius:8px}
+.mixture-prepare-dialog .mixture-preview-list::-webkit-scrollbar-thumb{background:#9bb3a8;border:3px solid #edf3ef;border-radius:8px}
+.mixture-prepare-dialog .mixture-stock-summary{
+  flex:0 0 auto;
+  margin-top:0;
+  padding:12px 11px 11px;
+}
+@media(max-width:760px){
+  .mixture-prepare-dialog .mixture-preview{
+    height:min(520px, calc(100dvh - 245px));
+    min-height:500px;
+  }
+}

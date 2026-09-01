@@ -820,6 +820,9 @@ test("la preparación de mezclas usa una cantidad única y conserva FIFO histór
   assert.match(sections, /Stock actual de mezcla/);
   assert.match(sections, /Stock después de preparar/);
   assert.match(styles, /\.mixture-stock-summary/);
+  assert.match(styles, /\.mixture-prepare-dialog \.mixture-preview\{[\s\S]*display:flex/);
+  assert.match(styles, /\.mixture-prepare-dialog \.mixture-preview-list\{[\s\S]*max-height:none !important[\s\S]*overflow-y:auto !important/);
+  assert.match(styles, /\.mixture-prepare-dialog \.mixture-stock-summary\{[\s\S]*flex:0 0 auto/);
   assert.match(schema, /export const mixturePreparations = sqliteTable/);
   assert.match(schema, /theoreticalQuantity:real\("theoretical_quantity"\)/);
 });
