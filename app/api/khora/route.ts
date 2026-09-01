@@ -300,10 +300,15 @@ export async function GET(request:Request){try{
  if(entity==="supplier_history"){
   const id=n(url.searchParams.get("id"));if(!id)return fail("Proveedor inválido");
   const [purchases,orders,expenses]=await db().batch([
-   db().prepare(`SELECT p.id,p.purchased_at,p.total_cost_cents,p.payment_status,p.status,cb.code,cb.name material,
-     COALESCE(p.base_quantity,p.quantity) quantity,COALESCE(p.purchased_unit,p.input_unit,rm.unit) unit
-     FROM raw_material_purchases p JOIN raw_materials rm ON rm.id=p.material_id JOIN code_base cb ON cb.id=rm.code_base_id
-     WHERE p.supplier_id=? ORDER BY p.purchased_at DESC,p.id DESC LIMIT 100`).bind(id),
+   db().prepare(`SELECT p.id,p.supplier_id,p.purchased_at,c.name category,cb.code,cb.name material,
+  COALESCE(p.input_quantity,p.quantity) input_quantity,COALESCE(p.input_unit,p.purchased_unit,rm.unit) input_unit,
+  COALESCE(p.base_quantity,p.quantity) base_quantity,rm.unit base_unit,p.unit_cost_cents,p.total_cost_cents,
+  COALESCE((SELECT SUM(fpe.amount_cents) FROM financial_payment_events fpe WHERE fpe.raw_material_purchase_id=p.id AND fpe.status='CONFIRMED'),CASE WHEN p.payment_status='PAID' THEN p.total_cost_cents ELSE 0 END) paid_cents,
+  GREATEST(0,p.total_cost_cents-COALESCE((SELECT SUM(fpe.amount_cents) FROM financial_payment_events fpe WHERE fpe.raw_material_purchase_id=p.id AND fpe.status='CONFIRMED'),CASE WHEN p.payment_status='PAID' THEN p.total_cost_cents ELSE 0 END)) pending_cents,
+  p.payment_status,p.invoice_number,CASE p.status WHEN 'CONFIRMED' THEN 'Confirmada' ELSE 'Anulada' END status,p.notes
+  FROM raw_material_purchases p JOIN raw_materials rm ON rm.id=p.material_id JOIN code_base cb ON cb.id=rm.code_base_id
+  LEFT JOIN categories c ON c.id=rm.category_id
+  WHERE p.supplier_id=? ORDER BY p.purchased_at DESC,p.id DESC LIMIT 100`).bind(id),
    db().prepare(`SELECT id,number,purchased_at,total_cents,payment_status,status FROM purchase_orders WHERE supplier_id=? ORDER BY purchased_at DESC,id DESC LIMIT 100`).bind(id),
    db().prepare(`SELECT e.id,e.incurred_at,e.amount_cents,e.payment_status,e.record_status,e.description,
      COALESCE(cb.manual_category,cb.manual_type,e.description) category
