@@ -66,10 +66,9 @@ export function suggestMaterialCode(prefix: string, existingCodes: string[]) {
 }
 
 export function materialStockStatus(stock: number, minimum: number) {
-  if (stock <= 0) return { label: "Sin stock", tone: "danger" as const };
-  if (stock < minimum) return { label: "Crítico", tone: "danger" as const };
-  if (stock <= minimum * 1.25) return { label: "Stock bajo", tone: "warning" as const };
-  return { label: "Normal", tone: "success" as const };
+  if (stock <= 0) return { label: "Agotado", tone: "danger" as const };
+  if (minimum > 0 && stock <= minimum * 1.25) return { label: "Poco stock", tone: "warning" as const };
+  return { label: "Disponible", tone: "success" as const };
 }
 
 export function stockValue(stock: number, unitCost: number) {

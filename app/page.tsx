@@ -45,14 +45,14 @@ export default function Home() {
 
   useEffect(() => {
     let active = true;
-    const entities = ["clients", "products", "materials", "manufacturing", "suppliers", "purchases"] as const;
+    const entities = ["clients", "products", "materials", "manufacturing", "suppliers", "purchases", "mixtures"] as const;
     Promise.all(entities.map(async (entity) => {
       const response = await fetch(`/api/khora?entity=${entity}`);
       if (!response.ok) throw new Error();
       const data = await response.json() as { rows?: Array<Record<string, unknown>> };
       return data.rows ?? [];
-    })).then(([clients, products, materials, batches, suppliers, purchases]) => {
-      if (active) setOperationalData({ clients, products, materials, batches, suppliers, purchases });
+    })).then(([clients, products, materials, batches, suppliers, purchases, mixtures]) => {
+      if (active) setOperationalData({ clients, products, materials, batches, suppliers, purchases, mixtures });
     }).catch(() => { if (active) setOperationalData(emptyOperationalData); });
     return () => { active = false; };
   }, [recordRevision]);
@@ -147,7 +147,7 @@ function ProfilePanel({ kind, email, onClose }: { kind: "settings" | "profile"; 
 
 function GlobalSearchPalette({ query, results, selectedIndex, onSelect, onClose }: { query: string; results: GlobalSearchResult[]; selectedIndex: number; onSelect: (result: GlobalSearchResult) => void; onClose: () => void }) {
   const groups = groupSearchResults(results);
-  return <div className="search-palette-layer"><button className="search-palette-backdrop" onClick={onClose} aria-label="Cerrar búsqueda" /><section className="search-palette" id="global-search-results" role="dialog" aria-modal="true" aria-label="Resultados de búsqueda global"><header><span><KhoraIcon name="search" /></span><div><strong>Resultados para “{query}”</strong><small>{results.length ? `${results.length} coincidencias en KHORA` : "Sin coincidencias"}</small></div><kbd>ESC</kbd></header><div className="search-results" role="listbox">{results.length ? Object.entries(groups).map(([category, items]) => <section key={category}><h2>{category}</h2>{items?.map((result) => { const resultIndex = results.indexOf(result); return <button key={result.id} className={resultIndex === selectedIndex ? "selected" : ""} role="option" aria-selected={resultIndex === selectedIndex} onMouseEnter={() => undefined} onClick={() => onSelect(result)}><i><KhoraIcon name={result.icon} /></i><span><strong>{result.title}</strong><small>{result.subtitle}</small></span><b>↗</b></button>; })}</section>) : <div className="search-empty"><span><KhoraIcon name="search" /></span><strong>No encontramos resultados</strong><p>Probá con un cliente, producto, materia prima, lote o proveedor.</p></div>}</div><footer><span>↑↓ Navegar</span><span>↵ Abrir</span><span>Esc Cerrar</span></footer></section></div>;
+  return <div className="search-palette-layer"><button className="search-palette-backdrop" onClick={onClose} aria-label="Cerrar búsqueda" /><section className="search-palette" id="global-search-results" role="dialog" aria-modal="true" aria-label="Resultados de búsqueda global"><header><span><KhoraIcon name="search" /></span><div><strong>Resultados para “{query}”</strong><small>{results.length ? `${results.length} coincidencias en KHORA` : "Sin coincidencias"}</small></div><kbd>ESC</kbd></header><div className="search-results" role="listbox">{results.length ? Object.entries(groups).map(([category, items]) => <section key={category}><h2>{category}</h2>{items?.map((result) => { const resultIndex = results.indexOf(result); return <button key={result.id} className={resultIndex === selectedIndex ? "selected" : ""} role="option" aria-selected={resultIndex === selectedIndex} onMouseEnter={() => undefined} onClick={() => onSelect(result)}><i><KhoraIcon name={result.icon} /></i><span><strong>{result.title}</strong><small>{result.subtitle}</small></span><b>↗</b></button>; })}</section>) : <div className="search-empty"><span><KhoraIcon name="search" /></span><strong>No encontramos resultados</strong><p>Probá con un cliente, producto, materia prima, lote, mezcla o proveedor.</p></div>}</div><footer><span>↑↓ Navegar</span><span>↵ Abrir</span><span>Esc Cerrar</span></footer></section></div>;
 }
 
 function NotificationCenter({ alerts, onNavigate, onDismiss, onClose }: { alerts: ReturnType<typeof getOperationalOverview>["alerts"]; onNavigate: (destination: NavigationIntent) => void; onDismiss: (id: string) => void; onClose: () => void }) {

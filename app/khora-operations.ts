@@ -5,12 +5,12 @@ export type NavigationIntent = { section: SectionId; query?: string };
 export type OperationalPriority = "critical" | "attention" | "information";
 export type AgendaItem = { id: string; label: string; detail: string; count: number; icon: KhoraIconName; tone: Tone; destination: NavigationIntent };
 export type OperationalAlert = { id: string; priority: OperationalPriority; title: string; detail: string; action: string; tone: Tone; destination: NavigationIntent };
-export type SearchCategory = "Clientes" | "Productos" | "Materias primas" | "Lotes" | "Proveedores";
+export type SearchCategory = "Clientes" | "Productos" | "Materias primas" | "Lotes" | "Proveedores" | "Mezclas";
 export type GlobalSearchResult = { id: string; category: SearchCategory; title: string; subtitle: string; icon: KhoraIconName; destination: NavigationIntent };
 
 type RealRow = Record<string, unknown>;
-export type OperationalData = { clients: RealRow[]; products: RealRow[]; materials: RealRow[]; batches: RealRow[]; suppliers: RealRow[]; purchases: RealRow[] };
-export const emptyOperationalData: OperationalData = { clients: [], products: [], materials: [], batches: [], suppliers: [], purchases: [] };
+export type OperationalData = { clients: RealRow[]; products: RealRow[]; materials: RealRow[]; batches: RealRow[]; suppliers: RealRow[]; purchases: RealRow[]; mixtures: RealRow[] };
+export const emptyOperationalData: OperationalData = { clients: [], products: [], materials: [], batches: [], suppliers: [], purchases: [], mixtures: [] };
 
 const text = (value: unknown) => String(value ?? "");
 const numeric = (value: unknown) => Number(value ?? 0);
@@ -39,6 +39,7 @@ export function searchKhora(rawQuery: string, data: OperationalData): GlobalSear
     ...data.materials.map((material) => ({ id: `material-${text(material.id)}`, category: "Materias primas" as const, title: text(material.material), subtitle: `${text(material.code)} · ${text(material.category)} · stock ${numeric(material.current_stock)} ${text(material.unit)}`, icon: moduleIcons.stock, destination: { section: "stock" as SectionId, query: text(material.material) } })),
     ...data.batches.map((batch) => ({ id: `batch-${text(batch.id)}`, category: "Lotes" as const, title: `Lote ${text(batch.batch_number)}`, subtitle: `${text(batch.product)} · ${numeric(batch.quantity)} unidades`, icon: moduleIcons.fabricacion, destination: { section: "fabricacion" as SectionId, query: text(batch.batch_number) } })),
     ...data.suppliers.map((supplier) => ({ id: `supplier-${text(supplier.id)}`, category: "Proveedores" as const, title: text(supplier.name), subtitle: [text(supplier.phone), text(supplier.address)].filter(Boolean).join(" · ") || "Sin datos de contacto", icon: moduleIcons.proveedores, destination: { section: "proveedores" as SectionId, query: text(supplier.name) } })),
+    ...data.mixtures.filter((mixture) => Number(mixture.active) === 1 || mixture.active === true).map((mixture) => ({ id: "mixture-" + text(mixture.id), category: "Mezclas" as const, title: text(mixture.name), subtitle: text(mixture.code) + " · " + text(mixture.unit) + " · stock " + numeric(mixture.current_stock), icon: moduleIcons.fabricacion, destination: { section: "stock" as SectionId, query: text(mixture.name) } })),
   ];
   return candidates.filter((result) => normalize(`${result.title} ${result.subtitle}`).includes(query)).sort((a, b) => searchScore(b, query) - searchScore(a, query)).slice(0, 18);
 }
