@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">KHORA</title>
+  <desc id="desc">Isotipo KHORA blanco</desc>
+  <circle cx="32" cy="32" r="27" fill="none" stroke="#FFFFFF" stroke-width="2.2"/>
+  <text x="19" y="51" fill="#FFFFFF" font-family="Georgia, Times New Roman, serif" font-size="47" font-weight="400">K</text>
+  <path d="M46 25l4 4 4-4-4-4z" fill="#FFFFFF"/>
+</svg>

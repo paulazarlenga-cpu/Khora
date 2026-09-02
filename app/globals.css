@@ -770,3 +770,43 @@ button:disabled{cursor:not-allowed}
 @media(max-width:760px){.purchases-toolbar{align-items:stretch;display:grid}.purchases-toolbar>.purchases-search-field{width:100%}.purchases-filter-controls{margin-left:0;display:grid;grid-template-columns:1fr 1fr}.purchases-filter-controls label{min-width:0;width:100%}.purchases-filter-controls select{width:100%}}
 @media(max-width:460px){.purchases-filter-controls{grid-template-columns:1fr}.purchases-filter-controls label{justify-content:space-between}}
 .tab-alert-badge{display:inline-flex;align-items:center;justify-content:center;min-width:17px;height:17px;margin-left:7px;padding:0 5px;border-radius:999px;color:#fff;font-size:8px;font-weight:800;line-height:1}.tab-alert-badge.low{background:#d29a40}.tab-alert-badge.out{background:#b95045}.nav-alert.low{background:#d29a40}.nav-alert.out{background:#b95045}
+
+/* Sistema de identidad visual KHORA: las proporciones viven en el componente
+   KhoraLogo y estas clases sólo definen la escala disponible por contexto. */
+:root{--khora-green:#174D3A;--khora-green-secondary:#2F6B52;--khora-cream:#F8F7F3;--khora-white:#FFFFFF;--khora-ink:#202420;--khora-gold:#C6A15B}
+.khora-logo{display:block;width:auto;max-width:100%;height:auto;flex:0 0 auto;object-fit:contain}
+.khora-logo--full-sm{width:170px}.khora-logo--full-md{width:200px}.khora-logo--full-lg{width:220px}
+.khora-logo--horizontal-sm{width:100px}.khora-logo--horizontal-md{width:120px}.khora-logo--horizontal-lg{width:140px}
+.khora-logo--icon-sm{width:20px;height:20px}.khora-logo--icon-md{width:32px;height:32px}.khora-logo--icon-lg{width:40px;height:40px}
+.navbar-brand{min-width:150px;justify-content:flex-start;padding-left:4px;padding-right:4px}
+.navbar-brand .khora-logo{width:140px;height:40px;margin:0 5px}
+.brand-block{justify-content:flex-start}
+.brand-block .khora-logo{width:120px;height:32px;margin:0 2px}
+.sidebar-logo--mobile,.mobile-topbar-logo{display:none}
+.login-brand{justify-content:center;align-items:center;gap:0;min-height:132px}
+.login-brand .khora-logo{width:220px;height:auto}
+
+/* El menú lateral aparece en notebook/tablet y conserva la versión compacta. */
+@media(max-width:1040px){
+  .mobile-topbar-logo--tablet{display:block;width:120px;height:32px;margin-right:4px}
+  .sidebar-logo--tablet{display:block;width:120px;height:32px}
+  .brand-block{padding-left:10px;padding-right:10px;gap:12px}
+  .global-search{width:auto;min-width:0;flex:1}
+}
+@media(max-width:767px) and (min-width:480px){
+  .mobile-topbar-logo--tablet{width:110px;height:30px}
+  .sidebar-logo--tablet{width:110px;height:30px}
+}
+@media(max-width:479px){
+  .mobile-topbar-logo--tablet,.sidebar-logo--tablet{display:none}
+  .mobile-topbar-logo--mobile,.sidebar-logo--mobile{display:block;width:32px;height:32px}
+  .topbar{gap:8px;padding-left:14px;padding-right:14px}
+  .menu-button{display:block;width:32px;height:32px;margin-right:0;padding:0}
+  .global-search{width:auto;min-width:0;flex:1}
+  .global-search kbd{display:none}
+  .brand-block{gap:10px}
+  .login-page{padding:16px}
+  .login-card{padding:26px 22px}
+  .login-brand .khora-logo{width:190px}
+}
+@media(max-width:650px){.global-search kbd{display:none}}

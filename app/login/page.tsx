@@ -1,4 +1,5 @@
 import { login } from "./actions";
+import { KhoraLogo } from "../khora-logo";
 
 type LoginPageProps = {
   searchParams: Promise<{ error?: string }>;
@@ -10,13 +11,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="login-page">
       <section className="login-card">
-        <div className="login-brand" aria-label="KHORA">
-          <span>K</span>
-          <div>
-            <strong>KHORA</strong>
-            <small>Gestión simple</small>
-          </div>
-        </div>
+        <div className="login-brand"><KhoraLogo variant="full" size="lg" theme="green" /></div>
         <div className="login-copy">
           <p>ACCESO SEGURO</p>
           <h1>Ingresá a tu negocio</h1>
