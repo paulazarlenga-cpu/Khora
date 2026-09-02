@@ -148,6 +148,18 @@
 @media(max-width:650px){.orders-filters{align-items:stretch;flex-direction:column}.orders-search{max-width:none;width:100%}.orders-filters select{width:100%}.view-switch{width:100%;display:grid;grid-template-columns:repeat(3,1fr)}.view-switch button{padding:0 6px}.calendar-day{min-height:102px}.calendar-order span{display:none}.order-detail dl{grid-template-columns:1fr}.order-detail>footer{display:grid;grid-template-columns:1fr 1fr}.day-order-row{grid-template-columns:1fr auto}.day-order-row>.badge{grid-column:1/-1}}
 @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
 
+/* Acción de detalle de producto: azul en reposo y terracota al interactuar. */
+.product-detail-button{
+  color:var(--button-secondary-text)!important;
+  padding:0!important;
+  cursor:pointer;
+  transition:color var(--motion-fast) var(--ease-standard)!important;
+}
+.product-detail-button:hover:not(:disabled),
+.product-detail-button:focus-visible{
+  color:var(--button-danger-text)!important;
+}
+
 /* Escala visual KHORA: tokens compartidos para legibilidad y jerarquía. */
 :root{--text-meta:.75rem;--text-small:.8125rem;--text-body:.9375rem;--text-nav:.875rem;--text-section:1.375rem;--text-value:1.875rem;--control-height:44px;--navbar-height:80px}
 body{font-size:var(--text-body)}
