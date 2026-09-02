@@ -226,6 +226,153 @@ const generateSaleDocument=async(saleId:number,type:SaleDocumentType,actorEmail:
  }catch(error){await db().prepare("UPDATE sale_documents SET status='ERROR',error_message=? WHERE id=?").bind(error instanceof Error?error.message:String(error),documentId).run();throw error;}
 };
 
+let orderSchemaPromise: Promise<void> | null = null;
+function ensureOrderSchema() {
+  if (!orderSchemaPromise) {
+    orderSchemaPromise = db().batch([
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_status TEXT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_paid_at TIMESTAMPTZ"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_paid_by TEXT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_delivered_at TIMESTAMPTZ"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_delivered_by TEXT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_expired_at TIMESTAMPTZ"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_cancel_reason TEXT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_customer_snapshot JSONB"),
+      db().prepare("ALTER TABLE payments ADD COLUMN IF NOT EXISTS store_payment_key TEXT"),
+      db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS payments_store_payment_key_uq ON payments(store_payment_key) WHERE store_payment_key IS NOT NULL"),
+      db().prepare("CREATE INDEX IF NOT EXISTS orders_store_status_idx ON orders(store_source,store_status,created_at DESC)"),
+      db().prepare("UPDATE orders SET store_status=CASE WHEN status='DELIVERED' THEN 'DELIVERED' WHEN status='CANCELLED' THEN 'CANCELLED' WHEN payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END WHERE store_source='STORE' AND store_status IS NULL"),
+    ]).then(() => undefined).catch((cause) => { orderSchemaPromise = null; throw cause; });
+  }
+  return orderSchemaPromise;
+}
+
+const storeStatusFromRow = (row: NRow) => {
+  const explicit = s(row.store_status).toUpperCase();
+  if (explicit) return explicit;
+  if (s(row.status).toUpperCase() === "DELIVERED") return "DELIVERED";
+  if (s(row.status).toUpperCase() === "CANCELLED") return "CANCELLED";
+  if (s(row.payment_status).toUpperCase() === "PAID") return "PENDING_DELIVERY";
+  return "PENDING_PAYMENT";
+};
+
+async function expireStoreOrders(actorEmail: string) {
+  await ensureOrderSchema();
+  const rows = (await db().prepare("SELECT id,number,store_reservation_id,store_status FROM orders WHERE store_source='STORE' AND COALESCE(store_status,'PENDING_PAYMENT')='PENDING_PAYMENT' AND expected_at IS NOT NULL AND CAST(expected_at AS TIMESTAMPTZ)<=CURRENT_TIMESTAMP").all()).results as NRow[];
+  if (!rows.length) return [];
+  const statements: Statement[] = [];
+  for (const row of rows) {
+    const id = n(row.id);
+    statements.push(
+      db().prepare("UPDATE orders SET store_status='EXPIRED',status='CANCELLED',payment_status='CANCELLED',store_expired_at=CURRENT_TIMESTAMP,cancelled_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND store_source='STORE' AND COALESCE(store_status,'PENDING_PAYMENT')='PENDING_PAYMENT'").bind(id),
+      db().prepare("UPDATE store_reservations SET status='RELEASED',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('ACTIVE','COMMITTED')").bind(n(row.store_reservation_id)),
+      db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,before_json,after_json) VALUES('EXPIRE','ORDER',?,?,?,?,?)").bind(id, actorEmail, `Pedido ${s(row.number)} vencido y stock liberado`, JSON.stringify({ status: "PENDING_PAYMENT" }), JSON.stringify({ status: "EXPIRED", stockReleased: true })),
+    );
+  }
+  await db().batch(statements);
+  return rows.map((row) => n(row.id));
+}
+
+async function orderDefinition(orderId: number) {
+  await ensureOrderSchema();
+  const result = await db().batch([
+    db().prepare("SELECT o.id,o.number,o.created_at,o.expected_at,o.total_cents,o.subtotal_cents,o.discount_cents,o.shipping_cents,o.status,o.payment_status,o.store_source,o.store_status,o.store_paid_at,o.store_paid_by,o.store_delivered_at,o.store_delivered_by,o.store_expired_at,o.store_cancel_reason,o.sale_id,o.confirmed_at,o.stock_consumed_at,o.delivery_address,o.notes,o.internal_notes,c.id client_id,c.name client_name,c.phone client_phone,c.email client_email,c.address client_address FROM orders o LEFT JOIN clients c ON c.id=o.client_id WHERE o.id=?").bind(orderId),
+    db().prepare("SELECT oi.id,oi.product_id,oi.description,cb.code,oi.customization,oi.quantity,oi.unit_price_cents,oi.line_total_cents FROM order_items oi LEFT JOIN products p ON p.id=oi.product_id LEFT JOIN code_base cb ON cb.id=p.code_base_id WHERE oi.order_id=? ORDER BY oi.id").bind(orderId),
+    db().prepare("SELECT p.id,p.sale_id,p.order_id,p.method,p.amount_cents,p.status,p.paid_at,p.reference,p.notes FROM payments p WHERE p.order_id=? OR p.sale_id=(SELECT sale_id FROM orders WHERE id=?) ORDER BY p.paid_at,p.id").bind(orderId,orderId),
+    db().prepare("SELECT id,created_at,action,actor_email,summary,before_json,after_json FROM audit_logs WHERE entity_type='ORDER' AND entity_id=? ORDER BY created_at ASC,id ASC").bind(orderId),
+    db().prepare("SELECT s.id,s.status,s.payment_status,s.sold_at FROM sales s JOIN orders o ON o.sale_id=s.id WHERE o.id=?").bind(orderId),
+  ]);
+  const order = result[0].results[0] as NRow | undefined;
+  if (!order) return null;
+  return { order, items: result[1].results, payments: result[2].results, history: result[3].results, sale: result[4].results[0] ?? null };
+}
+
+async function confirmStorePayment(orderId: number, actorEmail: string) {
+  await ensureOrderSchema();
+  await expireStoreOrders(actorEmail);
+  let order = await db().prepare("SELECT * FROM orders WHERE id=? AND store_source='STORE'").bind(orderId).first<NRow>();
+  if (!order) throw new Error("Pedido de Tienda inexistente");
+  const current = storeStatusFromRow(order);
+  if (current === "EXPIRED" || current === "CANCELLED") throw new Error("El pedido ya está cerrado");
+  if (current === "PENDING_DELIVERY" || current === "DELIVERED") return { saleId: n(order.sale_id), created: false, alreadyConfirmed: true };
+  const confirmed = await confirmOrder(orderId, actorEmail);
+  const saleId = n(confirmed.saleId);
+  const total = n(order.total_cents);
+  const now = new Date().toISOString();
+  await db().batch([
+    db().prepare("INSERT INTO payments(order_id,sale_id,direction,method,amount_cents,status,paid_at,notes,store_payment_key) VALUES(?,?,'IN',? ,?,'CONFIRMED',? ,? ,?) ON CONFLICT(store_payment_key) DO NOTHING").bind(orderId,saleId,"Confirmación manual",total,now,`Pago confirmado para ${s(order.number)}`,`STORE-PAYMENT-${orderId}`),
+    db().prepare("UPDATE sales SET payment_status='PAID',status='PAID' WHERE id=? AND status<>'CANCELLED'").bind(saleId),
+    db().prepare("UPDATE orders SET payment_status='PAID',store_status='PENDING_DELIVERY',status='PREPARING',store_paid_at=COALESCE(store_paid_at,CURRENT_TIMESTAMP),store_paid_by=COALESCE(store_paid_by,?),expected_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=? AND store_source='STORE' AND COALESCE(store_status,'PENDING_PAYMENT')='PENDING_PAYMENT'").bind(actorEmail,orderId),
+    db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('PAYMENT','ORDER',?,?,?,?)").bind(orderId,actorEmail,`Pago del pedido ${s(order.number)} confirmado`,JSON.stringify({ paymentStatus: "PAID", storeStatus: "PENDING_DELIVERY", saleId })),
+    db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('STATUS_CHANGE','ORDER',?,?,?,?)").bind(orderId,actorEmail,`Pedido ${s(order.number)} pasó a pendiente de entrega`,JSON.stringify({ storeStatus: "PENDING_DELIVERY" })),
+  ]);
+  return { saleId, created: confirmed.created, alreadyConfirmed: false };
+}
+
+async function markStoreDelivered(orderId: number, actorEmail: string) {
+  await ensureOrderSchema();
+  const order = await db().prepare("SELECT * FROM orders WHERE id=? AND store_source='STORE'").bind(orderId).first<NRow>();
+  if (!order) throw new Error("Pedido de Tienda inexistente");
+  const state = storeStatusFromRow(order);
+  if (state === "DELIVERED") return { saleId: n(order.sale_id), alreadyDelivered: true };
+  if (state !== "PENDING_DELIVERY" && state !== "PAID") throw new Error("El pedido debe estar pagado antes de entregarlo");
+  const result = await fulfillOrder(orderId, actorEmail);
+  await db().batch([
+    db().prepare("UPDATE orders SET store_status='DELIVERED',store_delivered_at=COALESCE(store_delivered_at,CURRENT_TIMESTAMP),store_delivered_by=COALESCE(store_delivered_by,?),status='DELIVERED',updated_at=CURRENT_TIMESTAMP WHERE id=? AND store_source='STORE' AND store_status IN ('PAID','PENDING_DELIVERY')").bind(actorEmail,orderId),
+    db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('DELIVER','ORDER',?,?,?,?)").bind(orderId,actorEmail,`Pedido ${s(order.number)} entregado`,JSON.stringify({ storeStatus: "DELIVERED", saleId: result.saleId })),
+  ]);
+  return { ...result, alreadyDelivered: false };
+}
+
+async function editStoreOrder(orderId: number, actorEmail: string, rawItems: unknown) {
+  await ensureOrderSchema();
+  const order = await db().prepare("SELECT * FROM orders WHERE id=? AND store_source='STORE'").bind(orderId).first<NRow>();
+  if (!order) throw new Error("Pedido de Tienda inexistente");
+  if (storeStatusFromRow(order) !== "PENDING_PAYMENT") throw new Error("Solo se pueden editar pedidos pendientes de pago");
+  const input = Array.isArray(rawItems) ? rawItems as Array<Record<string, unknown>> : [];
+  const grouped = new Map<number, number>();
+  for (const item of input) { const productId = n(item.productId); const quantity = n(item.quantity); if (productId > 0 && quantity > 0) grouped.set(productId, (grouped.get(productId) ?? 0) + quantity); }
+  if (!grouped.size) throw new Error("El pedido debe conservar al menos un producto");
+  const ids = [...grouped.keys()], placeholders = ids.map(() => "?").join(",");
+  const products = (await db().prepare(`SELECT p.id,cb.code,cb.name,p.current_stock,p.sale_price_cents FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE p.id IN (${placeholders}) AND p.active=1`).bind(...ids).all()).results as NRow[];
+  if (products.length !== ids.length) throw new Error("Uno de los productos ya no está disponible");
+  const previous = (await db().prepare("SELECT product_id,quantity,unit_price_cents FROM order_items WHERE order_id=? ORDER BY id").bind(orderId).all()).results as NRow[];
+  const previousPrice = new Map(previous.filter((row) => row.product_id).map((row) => [n(row.product_id), n(row.unit_price_cents)]));
+  const shortages: string[] = [];
+  for (const product of products) {
+    const committed = await db().prepare("SELECT COALESCE(SUM(oi.quantity),0) quantity FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=? AND o.store_source='STORE' AND o.id<>? AND COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END) IN ('PENDING_PAYMENT','PENDING_DELIVERY','PAID')").bind(n(product.id), orderId).first<NRow>();
+    const activeReservations = await db().prepare("SELECT COALESCE(SUM(sri.quantity),0) quantity FROM store_reservation_items sri JOIN store_reservations sr ON sr.id=sri.reservation_id WHERE sri.product_id=? AND sr.status='ACTIVE' AND sr.expires_at>CURRENT_TIMESTAMP AND sr.id<>?").bind(n(product.id), n(order.store_reservation_id)).first<NRow>();
+    const requested = grouped.get(n(product.id)) ?? 0;
+    const available = n(product.current_stock) - n(committed?.quantity) - n(activeReservations?.quantity);
+    if (requested > available + 0.000001) shortages.push(`${s(product.name)}: solo hay ${Math.max(0, available).toFixed(2)} disponibles`);
+  }
+  if (shortages.length) throw new Error(`No se puede editar. ${shortages.join("; ")}`);
+  const lines = products.map((product) => { const quantity = grouped.get(n(product.id))!; const unitPrice = previousPrice.get(n(product.id)) ?? n(product.sale_price_cents); return { productId: n(product.id), description: s(product.name), code: s(product.code), quantity, unitPrice, lineTotal: Math.round(quantity * unitPrice) }; });
+  const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0), discount = n(order.discount_cents), shipping = n(order.shipping_cents), total = Math.max(0, subtotal - discount + shipping);
+  const op = uid(), statements: Statement[] = [
+    db().prepare("DELETE FROM order_items WHERE order_id=?").bind(orderId),
+    ...lines.map((line) => db().prepare("INSERT INTO order_items(order_id,product_id,description,quantity,unit_price_cents,line_total_cents,requires_manufacturing) VALUES(?,?,?,?,?,?,0)").bind(orderId,line.productId,line.description,line.quantity,line.unitPrice,line.lineTotal)),
+    db().prepare("UPDATE orders SET subtotal_cents=?,total_cents=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND store_source='STORE' AND COALESCE(store_status,'PENDING_PAYMENT')='PENDING_PAYMENT'").bind(subtotal,total,orderId),
+    db().prepare("DELETE FROM store_reservation_items WHERE reservation_id=?").bind(n(order.store_reservation_id)),
+    ...lines.map((line) => db().prepare("INSERT INTO store_reservation_items(reservation_id,product_id,quantity,unit_price_cents) VALUES(?,?,?,?)").bind(n(order.store_reservation_id),line.productId,line.quantity,line.unitPrice)),
+    db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,before_json,after_json) VALUES('UPDATE','ORDER',?,?,?,?,?)").bind(orderId,actorEmail,`Pedido ${s(order.number)} editado`,JSON.stringify({totalCents:n(order.total_cents),items:previous.map((row)=>({productId:n(row.product_id),quantity:n(row.quantity)}))}),JSON.stringify({totalCents:total,items:lines.map((line)=>({productId:line.productId,quantity:line.quantity}))})),
+  ];
+  await db().batch(statements);
+  return { ok: true, totalCents: total, items: lines.length, operationKey: op };
+}
+async function cancelStoreOrder(orderId: number, actorEmail: string, reason: string) {
+  await ensureOrderSchema();
+  const order = await db().prepare("SELECT * FROM orders WHERE id=? AND store_source='STORE'").bind(orderId).first<NRow>();
+  if (!order) throw new Error("Pedido de Tienda inexistente");
+  const state = storeStatusFromRow(order);
+  if (state !== "PENDING_PAYMENT") throw new Error("Solo se puede cancelar un pedido pendiente de pago desde este flujo");
+  await db().batch([
+    db().prepare("UPDATE orders SET store_status='CANCELLED',status='CANCELLED',payment_status='CANCELLED',store_cancel_reason=?,cancelled_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=? AND store_source='STORE' AND COALESCE(store_status,'PENDING_PAYMENT')='PENDING_PAYMENT'").bind(reason || null,orderId),
+    db().prepare("UPDATE store_reservations SET status='RELEASED',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('ACTIVE','COMMITTED')").bind(n(order.store_reservation_id)),
+    db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CANCEL','ORDER',?,?,?,?)").bind(orderId,actorEmail,`Pedido ${s(order.number)} cancelado`,JSON.stringify({ storeStatus: "CANCELLED", reason: reason || null, stockReleased: true })),
+  ]);
+  return { cancelled: true };
+}
 const views:Record<string,string>={
  clients:`SELECT c.id,c.name,c.phone,c.email,c.address,c.active,c.price_list_id,pl.name price_list,COUNT(DISTINCT CASE WHEN s.status<>'CANCELLED' THEN s.id END) sales_count,COALESCE(SUM(CASE WHEN s.status<>'CANCELLED' THEN s.total_cents ELSE 0 END),0) total_spent_cents,COALESCE(ROUND(AVG(CASE WHEN s.status<>'CANCELLED' THEN s.total_cents END)),0) average_ticket_cents,MAX(CASE WHEN s.status<>'CANCELLED' THEN s.sold_at END) last_purchase,CASE WHEN MAX(CASE WHEN s.status<>'CANCELLED' THEN s.sold_at END) IS NULL THEN NULL ELSE CURRENT_DATE-CAST(MAX(CASE WHEN s.status<>'CANCELLED' THEN s.sold_at END) AS DATE) END days_without_buying FROM clients c LEFT JOIN price_lists pl ON pl.id=c.price_list_id LEFT JOIN sales s ON s.client_id=c.id GROUP BY c.id,pl.name ORDER BY c.active DESC,c.name`,
  price_lists:`SELECT pl.id,pl.code,pl.name,pl.price_modifier,pl.is_default,pl.active,COUNT(DISTINCT c.id) clients_count,COUNT(DISTINCT pli.id) custom_prices,COALESCE((SELECT json_agg(json_build_object('id',assigned.id,'name',assigned.name,'active',assigned.active) ORDER BY assigned.name) FROM clients assigned WHERE assigned.price_list_id=pl.id),'[]'::json) assigned_clients FROM price_lists pl LEFT JOIN clients c ON c.price_list_id=pl.id LEFT JOIN price_list_items pli ON pli.price_list_id=pl.id GROUP BY pl.id ORDER BY pl.is_default DESC,pl.name`,
@@ -245,7 +392,7 @@ const views:Record<string,string>={
   movements:`SELECT sm.id,sm.created_at,sm.product_id,sm.material_id,sm.reference_table,sm.reference_id,COALESCE(cbm.name,cbp.name) item,CASE sm.movement_type WHEN 'PURCHASE' THEN 'Compra' WHEN 'MANUFACTURE_INPUT' THEN 'Consumo de fabricación' WHEN 'MANUFACTURE_OUTPUT' THEN 'Producto fabricado' WHEN 'COMBO_INPUT' THEN 'Componente de combo' WHEN 'COMBO_OUTPUT' THEN 'Combo armado' WHEN 'SALE' THEN 'Venta' ELSE 'Ajuste de stock' END movement,sm.quantity_delta,sm.balance_after,sm.unit_cost_cents,sm.notes FROM stock_movements sm LEFT JOIN raw_materials rm ON rm.id=sm.material_id LEFT JOIN code_base cbm ON cbm.id=rm.code_base_id LEFT JOIN products p ON p.id=sm.product_id LEFT JOIN code_base cbp ON cbp.id=p.code_base_id WHERE NOT ((sm.product_id IS NOT NULL AND (NOT EXISTS (SELECT 1 FROM products p0 WHERE p0.id=sm.product_id) OR EXISTS (SELECT 1 FROM products p0 WHERE p0.id=sm.product_id AND p0.active=0))) OR (sm.reference_table='sales' AND (NOT EXISTS (SELECT 1 FROM sales s0 WHERE s0.id=sm.reference_id) OR EXISTS (SELECT 1 FROM sales s0 WHERE s0.id=sm.reference_id AND s0.status='CANCELLED'))) OR (sm.reference_table='raw_material_purchases' AND (NOT EXISTS (SELECT 1 FROM raw_material_purchases rp0 WHERE rp0.id=sm.reference_id) OR EXISTS (SELECT 1 FROM raw_material_purchases rp0 WHERE rp0.id=sm.reference_id AND rp0.status='CANCELLED')))) UNION ALL SELECT mm.id,mm.created_at,NULL::integer,NULL::integer,mm.reference_table,mm.reference_id,m.name item,CASE mm.movement_type WHEN 'PREPARATION_OUTPUT' THEN 'Mezcla preparada' WHEN 'CONSUMPTION' THEN 'Consumo de mezcla' ELSE 'Ajuste de mezcla' END movement,mm.quantity_delta,mm.balance_after,mm.unit_cost_cents,mm.notes FROM mixture_movements mm JOIN mixtures m ON m.id=mm.mixture_id ORDER BY id DESC`,
  profits:`SELECT * FROM monthly_profits ORDER BY month DESC`,
  profit_history:`SELECT * FROM profit_history ORDER BY id DESC`,
- orders:`SELECT o.id,o.number,c.name client,o.created_at,o.expected_at,o.total_cents,o.status,o.payment_status,o.sale_id,o.confirmed_at,o.stock_consumed_at,o.cancelled_at,o.delivery_address,o.notes FROM orders o LEFT JOIN clients c ON c.id=o.client_id WHERE o.archived_at IS NULL ORDER BY o.id DESC`,
+ orders:`SELECT o.id,o.number,o.client_id,c.name client,c.phone client_phone,c.email client_email,c.address client_address,o.created_at::text created_at,o.expected_at::text expected_at,o.total_cents,o.subtotal_cents,o.discount_cents,o.shipping_cents,o.status,o.payment_status,o.store_source,o.store_status,o.store_paid_at::text store_paid_at,o.store_paid_by,o.store_delivered_at::text store_delivered_at,o.store_delivered_by,o.store_expired_at::text store_expired_at,o.store_cancel_reason,o.store_reservation_id,o.store_stock_committed_at::text store_stock_committed_at,o.sale_id,o.confirmed_at::text confirmed_at,o.stock_consumed_at::text stock_consumed_at,o.cancelled_at::text cancelled_at,o.delivery_address,o.notes,o.internal_notes,COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.order_id=o.id AND p.direction='IN' AND p.status='CONFIRMED'),0) paid_cents FROM orders o LEFT JOIN clients c ON c.id=o.client_id WHERE o.archived_at IS NULL ORDER BY o.created_at DESC,o.id DESC`,
  payments:`SELECT p.id,p.paid_at,COALESCE(o.number,'Venta #'||p.sale_id) reference,c.name client,p.method,p.amount_cents,p.direction,p.status,p.notes FROM payments p LEFT JOIN orders o ON o.id=p.order_id LEFT JOIN clients c ON c.id=o.client_id ORDER BY p.id DESC`,
  shipments:`SELECT sh.id,o.number order_number,c.name client,sh.address,sh.carrier,sh.tracking_code,sh.cost_cents,sh.status,sh.dispatched_at,sh.delivered_at FROM shipments sh JOIN orders o ON o.id=sh.order_id LEFT JOIN clients c ON c.id=sh.client_id ORDER BY sh.id DESC`,
  delivery_notes:`SELECT dn.id,dn.number,o.number order_number,c.name client,dn.issued_at,dn.status,dn.file_key FROM delivery_notes dn LEFT JOIN orders o ON o.id=dn.order_id LEFT JOIN clients c ON c.id=dn.client_id ORDER BY dn.id DESC`,
@@ -256,13 +403,22 @@ const views:Record<string,string>={
 
 export async function GET(request:Request){try{
  const url=new URL(request.url),entity=url.searchParams.get("entity")||"summary";
- if(entity==="finance_auto_close"){
+ if(entity==="orders_auto_expire"){
+  const secret=process.env.CRON_SECRET,authorization=request.headers.get("authorization");
+  if(!secret||authorization!==`Bearer ${secret}`)return fail("No autorizado",401);
+  const expired=await expireStoreOrders("cron@khora");
+  return ok({ok:true,expired});
+ } if(entity==="finance_auto_close"){
   const secret=process.env.CRON_SECRET,authorization=request.headers.get("authorization");
   if(!secret||authorization!==`Bearer ${secret}`)return fail("No autorizado",401);
   await ensurePreviousFinanceClosure("cron@khora");
   return ok({ok:true,month:previousMonthKey()});
   }
-  const user=await getKhoraUser();if(!user)return fail("No autorizado",401);
+  const user=await getKhoraUser();if(!user)return fail("No autorizado",401); if(entity==="order_definition"){
+  await expireStoreOrders(user.email??"sistema");
+  const id=n(url.searchParams.get("id"));if(!id)return fail("Pedido inválido");
+  const definition=await orderDefinition(id);if(!definition)return fail("Pedido inexistente",404);return ok(definition);
+ }
   if(entity==="manufacture_preview"){
     const productId=n(url.searchParams.get("productId")),quantity=n(url.searchParams.get("quantity"));if(!productId||quantity<=0)return fail("Producto o cantidad inválida");
     const result=await db().batch([
@@ -325,7 +481,11 @@ export async function GET(request:Request){try{
  if(entity==="next_code"&&s(url.searchParams.get("kind")).toUpperCase()==="MIXTURE"){return ok({kind:"MIXTURE",code:nextSequentialCode(await listMixtureCodes(),"MIXTURE")})}
  if(entity==="next_code"){const type=s(url.searchParams.get("kind")).toUpperCase(),kind:SequentialCodeKind=type==="COMBO"?"COMBO":"PRODUCT";return ok({kind,code:nextSequentialCode(await listDefinitionCodes(kind),kind)})}
  if(entity==="next_material_code"){const categoryId=n(url.searchParams.get("categoryId")),category=await getMaterialCategory(categoryId);if(!category)return fail("Elegí una categoría de materia prima activa");const prefix=normalizePrefix(s(category.prefix));return ok({categoryId,prefix,code:suggestMaterialCode(prefix,await listMaterialCodes(prefix))})}
- if(entity==="summary"){const r=await db().batch([db().prepare("SELECT COALESCE(SUM(total_cents),0) value FROM sales WHERE status<>'CANCELLED'"),db().prepare("SELECT COALESCE(SUM(amount_cents),0) value FROM expenses WHERE record_status<>'CANCELLED'"),db().prepare("SELECT COUNT(*) value FROM products WHERE active=1 AND current_stock<=minimum_stock"),db().prepare("SELECT COUNT(*) value FROM raw_materials WHERE active=1 AND current_stock<=minimum_stock")]);return ok({sales:r[0].results[0]?.value??0,expenses:r[1].results[0]?.value??0,lowProducts:r[2].results[0]?.value??0,lowMaterials:r[3].results[0]?.value??0})}
+ if(entity==="orders"){
+  await expireStoreOrders(user.email??"sistema");
+  const rows=(await db().prepare(views.orders).all()).results;
+  return ok({rows});
+ } if(entity==="summary"){const r=await db().batch([db().prepare("SELECT COALESCE(SUM(total_cents),0) value FROM sales WHERE status<>'CANCELLED'"),db().prepare("SELECT COALESCE(SUM(amount_cents),0) value FROM expenses WHERE record_status<>'CANCELLED'"),db().prepare("SELECT COUNT(*) value FROM products WHERE active=1 AND current_stock<=minimum_stock"),db().prepare("SELECT COUNT(*) value FROM raw_materials WHERE active=1 AND current_stock<=minimum_stock")]);return ok({sales:r[0].results[0]?.value??0,expenses:r[1].results[0]?.value??0,lowProducts:r[2].results[0]?.value??0,lowMaterials:r[3].results[0]?.value??0})}
  if(entity==="categories"){
   try{return ok({rows:(await db().prepare(views.categories).all()).results})}
   catch(error){if(!/no such column:\s*prefix/i.test(error instanceof Error?error.message:String(error)))throw error;const rows=(await db().prepare("SELECT id,code,name,kind,active FROM categories ORDER BY active DESC,name").all()).results as NRow[];return ok({rows:rows.map(row=>({...row,prefix:row.kind==="MATERIAL"?categoryPrefix(s(row.name)):null,category_type:row.kind==="MATERIAL"?"Materia prima":row.kind==="PRODUCT"?"Producto":"Gasto"}))})}
@@ -971,7 +1131,10 @@ export async function POST(request:Request){try{const user=await getKhoraUser();
   for(const item of resolvedItems)q.push(db().prepare("INSERT INTO order_items(order_id,product_id,description,customization,quantity,unit_price_cents,line_total_cents,requires_manufacturing) VALUES((SELECT id FROM orders WHERE number=?),?,?,?,?,?,?,?)").bind(number,item.productId?n(item.productId):null,item.description,s(item.customization)||null,n(item.quantity),item.unitPriceCents,Math.round(n(item.quantity)*item.unitPriceCents),item.requiresManufacturing?1:0));
   q.push(db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','ORDER',(SELECT id FROM orders WHERE number=?),?,?,?)").bind(number,actorEmail,`Pedido ${number} creado`,JSON.stringify({totalCents:total})));await db().batch(q);const created=await db().prepare("SELECT id FROM orders WHERE number=?").bind(number).first<NRow>();return ok({ok:true,id:n(created?.id),number,totalCents:total})
   }
-  if(action==="confirm_order"){const result=await confirmOrder(n(b.id),actorEmail);return ok({ok:true,...result})}
+  if(action==="confirm_store_payment"){const result=await confirmStorePayment(n(b.id),actorEmail);return ok({ok:true,...result})}
+  if(action==="deliver_store_order"){const result=await markStoreDelivered(n(b.id),actorEmail);await refreshProfits();return ok({ok:true,...result})}
+  if(action==="cancel_store_order"){const result=await cancelStoreOrder(n(b.id),actorEmail,s(b.reason));return ok({ok:true,...result})}
+  if(action==="edit_store_order"){const result=await editStoreOrder(n(b.id),actorEmail,b.items);return ok(result)}  if(action==="confirm_order"){const result=await confirmOrder(n(b.id),actorEmail);return ok({ok:true,...result})}
   if(action==="fulfill_order"){const result=await fulfillOrder(n(b.id),actorEmail);await refreshProfits();return ok({ok:true,...result})}
   if(action==="set_order_status"){
   const id=n(b.id),status=s(b.status).toUpperCase(),allowed=["NEW","PENDING","PREPARING","MANUFACTURING","READY","SHIPPED","DELIVERED","CANCELLED"];if(!allowed.includes(status))throw new Error("Estado de pedido inválido");const before=await db().prepare("SELECT number,status FROM orders WHERE id=?").bind(id).first<NRow>();if(!before)throw new Error("Pedido inexistente");

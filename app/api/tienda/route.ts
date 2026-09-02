@@ -34,6 +34,16 @@ function ensureStoreSchema() {
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_idempotency_key TEXT"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_reservation_id BIGINT"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_stock_committed_at TIMESTAMPTZ"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_status TEXT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_paid_at TIMESTAMPTZ"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_paid_by TEXT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_delivered_at TIMESTAMPTZ"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_delivered_by TEXT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_expired_at TIMESTAMPTZ"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_cancel_reason TEXT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_customer_snapshot JSONB"),
+      db().prepare("ALTER TABLE payments ADD COLUMN IF NOT EXISTS store_payment_key TEXT"),
+      db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS payments_store_payment_key_uq ON payments(store_payment_key) WHERE store_payment_key IS NOT NULL"),
       db().prepare("UPDATE products SET store_published=TRUE WHERE store_published IS NULL"),
       db().prepare("CREATE SEQUENCE IF NOT EXISTS store_order_number_seq START WITH 1"),
       db().prepare("CREATE TABLE IF NOT EXISTS store_reservations (id BIGSERIAL PRIMARY KEY, token TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','COMMITTED','EXPIRED','RELEASED')), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
@@ -207,7 +217,7 @@ async function createStoreOrder(body: Record<string, unknown>) {
   if (!number) throw new Error("No se pudo generar el número de pedido.");
   const totalCents = reservationItems.reduce((sum, item) => sum + Math.round(asNumber(item.quantity) * asNumber(item.sale_price_cents)), 0);
   const q = [
-    db().prepare("INSERT INTO orders(number,client_id,status,payment_status,subtotal_cents,total_cents,expected_at,delivery_address,notes,store_source,store_idempotency_key,store_reservation_id,store_stock_committed_at) VALUES(?,?, 'PENDING','PENDING',?,?,(CURRENT_TIMESTAMP + INTERVAL '24 hours')::text,?,?, 'STORE',?,?,CURRENT_TIMESTAMP)").bind(number, clientId, totalCents, totalCents, location || null, `Origen: KHORA Tienda · ${phone}`, idempotencyKey, asNumber(reservation.id)),
+    db().prepare("INSERT INTO orders(number,client_id,status,payment_status,subtotal_cents,total_cents,expected_at,delivery_address,notes,store_source,store_idempotency_key,store_reservation_id,store_stock_committed_at,store_status,store_customer_snapshot) VALUES(?,?, 'PENDING','PENDING',?,?,(CURRENT_TIMESTAMP + INTERVAL '24 hours')::text,?,?, 'STORE',?,?,CURRENT_TIMESTAMP,'PENDING_PAYMENT',?::jsonb)").bind(number, clientId, totalCents, totalCents, location || null, `Origen: KHORA Tienda · ${phone}`, idempotencyKey, asNumber(reservation.id), JSON.stringify({ name, phone, email, location })),
     db().prepare("UPDATE store_reservations SET status='COMMITTED',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='ACTIVE'").bind(asNumber(reservation.id)),
     db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','ORDER',(SELECT id FROM orders WHERE number=?),'KHORA Tienda',?,?)").bind(number, `Pedido ${number} generado desde KHORA Tienda`, JSON.stringify({ source: "STORE", customerId: clientId, reservedUntil: asString(reservation.expires_at), committedUntilHours: 24 })),
   ];
@@ -263,5 +273,3 @@ export async function POST(request: Request) {
     return errorResponse(cause instanceof Error ? cause.message : "No se pudo completar la operación.", 400);
   }
 }
-
-
