@@ -810,3 +810,14 @@ button:disabled{cursor:not-allowed}
   .login-brand .khora-logo{width:190px}
 }
 @media(max-width:650px){.global-search kbd{display:none}}
+
+/* En escritorios amplios el header tiene espacio suficiente para que la marca
+   tenga presencia; tablet y mobile conservan sus escalas compactas. */
+@media(min-width:1540px){
+  .navbar-brand{min-width:185px}
+  .navbar-brand .khora-logo{width:175px;height:50px}
+}
+@media(min-width:1280px) and (max-width:1539px){
+  .navbar-brand{min-width:170px}
+  .navbar-brand .khora-logo{width:160px;height:46px}
+}
