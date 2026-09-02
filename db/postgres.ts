@@ -66,7 +66,7 @@ function postgresSql(source: string) {
   return output;
 }
 
-class KhoraPreparedStatement {
+export class KhoraPreparedStatement {
   private parameters: unknown[] = [];
 
   constructor(
@@ -129,20 +129,42 @@ function getPostgresClient() {
   return globalStore.__khoraPostgres;
 }
 
+export type KhoraTransaction = {
+  prepare(source: string): KhoraPreparedStatement;
+  batch(statements: KhoraPreparedStatement[]): Promise<KhoraQueryResult[]>;
+};
+
+function transactionDatabase(transaction: Queryable): KhoraTransaction {
+  return {
+    prepare(source: string) {
+      return new KhoraPreparedStatement(source, transaction);
+    },
+    async batch(statements: KhoraPreparedStatement[]) {
+      const results: KhoraQueryResult[] = [];
+      for (const statement of statements) {
+        results.push(await statement.withConnection(transaction).all());
+      }
+      return results;
+    },
+  };
+}
+
+export async function withKhoraTransaction<T>(callback: (transaction: KhoraTransaction) => Promise<T>) {
+  const client = getPostgresClient();
+  return client.begin(async (transaction) => callback(transactionDatabase(transaction)));
+}
+
 export const khoraDb = {
   prepare(source: string) {
     return new KhoraPreparedStatement(source);
   },
 
   async batch(statements: KhoraPreparedStatement[]) {
-    const client = getPostgresClient();
-    return client.begin(async (transaction) => {
-      const results: KhoraQueryResult[] = [];
-      for (const statement of statements) {
-        results.push(await statement.withConnection(transaction).all());
-      }
-      return results;
-    });
+    return withKhoraTransaction((transaction) => transaction.batch(statements));
+  },
+
+  transaction<T>(callback: (transaction: KhoraTransaction) => Promise<T>) {
+    return withKhoraTransaction(callback);
   },
 };
 

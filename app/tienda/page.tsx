@@ -11,7 +11,7 @@ type StoreOrder = { number: string; expiresAt: string; totalCents: number; custo
 const money = (cents: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(cents / 100);
 const formatQuantity = (value: number) => Number.isInteger(value) ? String(value) : value.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 const productImage = (product: Product) => product.imagePath && /^(https?:|\/)/.test(product.imagePath) ? product.imagePath : null;
-const readToken = () => { try { return localStorage.getItem("khora-store-token") ?? ""; } catch { return ""; } };
+const readToken = () => { try { return localStorage.getItem("khora-store-token") ?? ""; } catch { return ""; } }; const readExpiresAt = () => { try { return localStorage.getItem("khora-store-expires") ?? ""; } catch { return ""; } };
 const readCart = (): CartLine[] => { try { const value = JSON.parse(localStorage.getItem("khora-store-cart") ?? "[]"); return Array.isArray(value) ? value : []; } catch { return []; } };
 const viewFromLocation = (): { view: View; productId?: number; orderNumber?: string } => {
   const params = new URLSearchParams(window.location.search);
@@ -53,7 +53,7 @@ export default function StorePage() {
     const initial = viewFromLocation();
     // Hydrate the client-only URL and localStorage state after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setView(initial.view); setSelectedProductId(initial.productId); setToken(readToken()); setCart(readCart());
+    setView(initial.view); setSelectedProductId(initial.productId); setToken(readToken()); setExpiresAt(readExpiresAt()); setCart(readCart());
     const onPopState = () => { const next = viewFromLocation(); setView(next.view); setSelectedProductId(next.productId); };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -64,7 +64,7 @@ export default function StorePage() {
     // Show the loading state whenever the reservation token changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetch(`/api/tienda?entity=products${token ? `&token=${encodeURIComponent(token)}` : ""}`).then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "No se pudo cargar el catálogo."); return data as { products: Product[] }; }).then((data) => { if (active) { setProducts(data.products); setError(""); } }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "No se pudo cargar el catálogo."); }).finally(() => { if (active) setLoading(false); });
+    fetch(`/api/tienda?entity=products${token ? `&token=${encodeURIComponent(token)}` : ""}`).then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "No se pudo cargar el catálogo."); return data as { products: Product[]; reservationExpiresAt?: string }; }).then((data) => { if (active) { setProducts(data.products); if (data.reservationExpiresAt) { setExpiresAt(data.reservationExpiresAt); try { localStorage.setItem("khora-store-expires", data.reservationExpiresAt); } catch { /* optional persistence */ } } setError(""); } }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "No se pudo cargar el catálogo."); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token]);
 
@@ -94,13 +94,13 @@ export default function StorePage() {
   function saveCart(next: CartLine[]) { setCart(next); try { localStorage.setItem("khora-store-cart", JSON.stringify(next)); } catch { /* optional persistence */ } }
 
   async function syncReservation(nextCart: CartLine[]) {
-    if (!nextCart.length) { if (token) await fetch("/api/tienda", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "release", token }) }).catch(() => undefined); saveCart([]); setExpiresAt(""); setReservationExpired(false); return; }
+    if (!nextCart.length) { if (token) await fetch("/api/tienda", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "release", token }) }).catch(() => undefined); saveCart([]); setExpiresAt(""); setReservationExpired(false); try { localStorage.removeItem("khora-store-expires"); localStorage.removeItem("khora-store-token"); } catch { /* optional persistence */ } return; }
     setSaving(true); setError("");
     try {
       const response = await fetch("/api/tienda", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "reserve", token, items: nextCart.map((item) => ({ productId: item.id, quantity: item.quantity })) }) });
       const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "No pudimos reservar estos productos.");
       const nextToken = String(data.token); setToken(nextToken); try { localStorage.setItem("khora-store-token", nextToken); } catch { /* optional persistence */ }
-      setExpiresAt(String(data.expiresAt)); setReservationExpired(false);
+      setExpiresAt(String(data.expiresAt)); try { localStorage.setItem("khora-store-expires", String(data.expiresAt)); } catch { /* optional persistence */ } setReservationExpired(false);
       const updates = new Map<number, { productId: number; priceCents: number; availableStock: number }>((data.items ?? []).map((item: { productId: number; priceCents: number; availableStock: number }) => [Number(item.productId), item] as const));
       saveCart(nextCart.map((item) => ({ ...item, priceCents: Number(updates.get(item.id)?.priceCents ?? item.priceCents), availableStock: Number(updates.get(item.id)?.availableStock ?? item.availableStock) })));
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos reservar estos productos."); throw cause; } finally { setSaving(false); }
@@ -134,11 +134,11 @@ export default function StorePage() {
       const data = await response.json();
       if (response.status === 409 && data.priceChanged) {
         const updates = new Map<number, number>((data.changes ?? []).map((item: { productId: number; newPriceCents: number }) => [Number(item.productId), Number(item.newPriceCents)] as const));
-        saveCart(cart.map((item) => updates.has(item.id) ? { ...item, priceCents: updates.get(item.id)! } : item));
+        const updatedCart = cart.map((item) => updates.has(item.id) ? { ...item, priceCents: updates.get(item.id)! } : item); saveCart(updatedCart); try { await syncReservation(updatedCart); } catch { /* keep the latest reservation error visible */ }
         setError("El precio de uno o más productos se actualizó. Revisá el nuevo total antes de generar el pedido."); return;
       }
       if (!response.ok) throw new Error(data.error ?? "No se pudo generar el pedido.");
-      setOrder(data.order); if (data.settings) setSettings(data.settings); saveCart([]); setExpiresAt(""); setCheckoutKey(""); setNotice(""); navigate("confirmation", undefined, data.order.number);
+      setOrder(data.order); if (data.settings) setSettings(data.settings); saveCart([]); setExpiresAt(""); try { localStorage.removeItem("khora-store-expires"); localStorage.removeItem("khora-store-token"); } catch { /* optional persistence */ } setCheckoutKey(""); setNotice(""); navigate("confirmation", undefined, data.order.number);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo generar el pedido."); } finally { setSaving(false); }
   }
 
