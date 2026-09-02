@@ -150,12 +150,9 @@ function Dashboard({ onNavigate }: { onNavigate: (section: SectionId, query?: st
       <Metric label="Productos bajos" value={String(productsAlert.problemCount)} detail="Según stock mínimo" tone={productsAlert.severity === "out" ? "danger" : "warning"} icon={moduleIcons.productos} onClick={() => onNavigate("stock")} />
       <Metric label="Materias primas bajas" value={String(materialsAlert.problemCount)} detail="Requieren reposición" tone={materialsAlert.severity === "out" ? "danger" : "warning"} icon={moduleIcons.stock} onClick={() => onNavigate("stock")} />
     </div>
-    <div className="dashboard-grid dashboard-main">
+    <div className="dashboard-grid dashboard-main dashboard-home-main">
       <Panel className="chart-panel" title="Ventas vs Compras" subtitle="Comparación mensual entre lo vendido y lo comprado" action={<div className="period-control"><button className="period-button" aria-haspopup="menu" aria-expanded={periodMenuOpen} onClick={() => setPeriodMenuOpen((open) => !open)}>Últimos {chartPeriod} meses⌄</button>{periodMenuOpen && <div className="period-menu" role="menu" aria-label="Período del gráfico">{([3, 6, 12] as ChartPeriod[]).map((period) => <button key={period} role="menuitem" className={period === chartPeriod ? "active" : ""} onClick={() => { setChartPeriod(period); setPeriodMenuOpen(false); }}>Últimos {period} meses{period === chartPeriod && <span aria-hidden="true">✓</span>}</button>)}</div>}</div>}>
         <DashboardMonthlyChart rows={monthlyRows.slice(-chartPeriod)} />
-      </Panel>
-      <Panel title="Centro de alertas" subtitle="Calculadas con los datos actuales" action={<span className="alert-total">{alerts.length} activas</span>}>
-        <div className="alert-list">{alerts.slice(0, 6).map((alert) => <article className="alert-row" key={alert.id}><i className={`dot ${alert.tone}`} /><div><span className={`priority-label ${alert.tone === "danger" ? "critical" : "attention"}`}>{alert.tone === "danger" ? "CRÍTICO" : "ATENCIÓN"}</span><strong>{alert.title}</strong><p>{alert.detail}</p><button onClick={() => onNavigate(alert.section)}>Revisar →</button></div></article>)}{!alerts.length && <p className="empty-operation">✓ No hay alertas activas.</p>}</div>
       </Panel>
     </div>
     <div className="dashboard-grid dashboard-bottom">

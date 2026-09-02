@@ -544,6 +544,7 @@ input:disabled,select:disabled,textarea:disabled{background:#f2f4f1;color:#8c979
 
 /* Dashboard chart: give the data room to breathe and make the period control usable. */
 .chart-panel .panel-head{position:relative;overflow:visible}
+.dashboard-home-main{grid-template-columns:1fr}
 .period-control{position:relative;flex:0 0 auto}
 .period-control .period-button{min-width:128px;text-align:center}
 .period-menu{position:absolute;right:0;top:calc(100% + 7px);z-index:25;min-width:154px;padding:5px;background:#fff;border:1px solid var(--line);border-radius:9px;box-shadow:0 12px 28px rgba(31,54,45,.14)}
