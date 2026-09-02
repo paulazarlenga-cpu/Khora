@@ -833,3 +833,5 @@ button:disabled{cursor:not-allowed}
   .navbar-brand{min-width:170px}
   .navbar-brand .khora-logo{width:160px;height:46px}
 }
+
+.product-internal-note{border:1px solid #cfe0d6;border-radius:11px;background:#f1f7f3;padding:14px 16px;display:grid;gap:9px}.product-internal-note>header{display:flex;align-items:center;justify-content:space-between;gap:12px}.product-internal-note>header>div{display:grid;gap:3px}.product-internal-note small{font-size:9px;letter-spacing:1.1px;color:#72877c;font-weight:750}.product-internal-note strong{font-size:14px;color:var(--forest)}.product-internal-note>header>span{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#dcebe2;color:#3f6f58;font:13px Georgia,serif}.product-internal-note>p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0;color:#50645a;font-size:13px;line-height:1.5}
