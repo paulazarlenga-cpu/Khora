@@ -602,6 +602,15 @@ function Products({ search, onCreateMaterial }: { search: string; onCreateMateri
   const [productNotice, setProductNotice] = useState("");
   const [photoUrls, setPhotoUrls] = useState<Record<number, string>>({});
   const [uploadingPhoto, setUploadingPhoto] = useState<number | null>(null);
+  const productSearchFromNavigation = search;
+  const [productQuery, setProductQuery] = useState(search);
+  useEffect(() => { setProductQuery(productSearchFromNavigation); }, [productSearchFromNavigation]);
+  useEffect(() => {
+    const handleProductSearch = (event: Event) => setProductQuery((event as CustomEvent<string>).detail);
+    window.addEventListener("khora:product-search", handleProductSearch);
+    return () => window.removeEventListener("khora:product-search", handleProductSearch);
+  }, []);
+  search = productQuery;
   // The default product catalogue only shows active definitions. Archived/deleted
   // products remain available to historical sales and stock movements, but must
   // disappear from the operational cards immediately after the action succeeds.
@@ -1942,7 +1951,7 @@ function Avatar({ text, small = false }: { text: string; small?: boolean }) { re
 function MoreButton() { return <Button variant="utility" size="xs" iconOnly aria-label="Más acciones" icon={<span aria-hidden="true">•••</span>} />; }
 function CellPerson({ name, subtitle, initialsText }: { name: string; subtitle?: string; initialsText?: string }) { return <div className="cell-person"><Avatar text={initialsText ?? initials(name)} small /><div><strong>{name}</strong>{subtitle && <small>{subtitle}</small>}</div></div>; }
 function Tabs({ tabs, active, onChange, alerts }: { tabs: string[]; active: string; onChange: (tab: string) => void; alerts?: Partial<Record<string, StockAlertSummary>> }) { return <div className="tabs" role="tablist">{tabs.map((tab) => { const alert = alerts?.[tab]; return <button key={tab} role="tab" aria-selected={tab === active} className={tab === active ? "active" : ""} onClick={() => onChange(tab)}>{tab}{alert && alert.problemCount > 0 && <span className={`tab-alert-badge ${alert.severity}`} title={`${alert.lowCount} con poco stock · ${alert.outCount} sin stock`} aria-label={`${alert.problemCount} registros con ${alert.severity === "out" ? "sin stock" : "poco stock"}`}>{alert.problemCount}</span>}</button>; })}</div>; }
-function Toolbar({ placeholder, filters, compact = false }: { placeholder: string; filters: string[]; compact?: boolean }) { return <div className={`toolbar ${compact ? "compact" : ""}`}><label><span>⌕</span><input placeholder={placeholder} /></label><div>{filters.map((filter) => <Button key={filter} variant="utility" size="xs" iconPosition="end" icon={<span aria-hidden="true">⌄</span>}>{filter}</Button>)}</div></div>; }
+function Toolbar({ placeholder, filters, compact = false }: { placeholder: string; filters: string[]; compact?: boolean }) { const isProductToolbar = placeholder === "Buscar producto o código…", handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => { window.dispatchEvent(new CustomEvent("khora:product-search", { detail: (event.target as HTMLInputElement).value })); }; return <div className={`toolbar ${compact ? "compact" : ""}`}><label><span>⌕</span><input placeholder={placeholder} onChange={isProductToolbar ? handleInputChange : undefined} /></label>{!isProductToolbar && <div>{filters.map((filter) => <Button key={filter} variant="utility" size="xs" iconPosition="end" icon={<span aria-hidden="true">⌄</span>}>{filter}</Button>)}</div>}</div>; }
 function DataTable({ headers, children }: { headers: string[]; children: React.ReactNode }) { return <div className="data-table-wrap"><table className="data-table"><thead><tr>{headers.map((header, index) => <th key={`${header}-${index}`}>{header}</th>)}</tr></thead><tbody>{children}</tbody></table></div>; }
 function inventoryBatchStatus(available: number, initial: number) { const current = Number(available) || 0, total = Number(initial) || 0; if (current <= 0) return { label: "Agotado", tone: "danger" as const }; if (total > 0 && current < total) return { label: "Poco stock", tone: "warning" as const }; return { label: "Disponible", tone: "success" as const }; }
 
