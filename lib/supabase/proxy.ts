@@ -30,9 +30,10 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   const isLogin = request.nextUrl.pathname === "/login";
+  const isStore = request.nextUrl.pathname === "/tienda" || request.nextUrl.pathname.startsWith("/tienda/") || request.nextUrl.pathname === "/api/tienda";
   const isAuthorized = Boolean(user && isAllowedKhoraEmail(user.email));
 
-  if (!isAuthorized && !isLogin) {
+  if (!isAuthorized && !isLogin && !isStore) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
@@ -49,3 +50,4 @@ export async function updateSession(request: NextRequest) {
   response.headers.set("Cache-Control", "private, no-store");
   return response;
 }
+
