@@ -25,6 +25,17 @@ const asString = (value: unknown) => String(value ?? "").trim();
 const json = (data: unknown, status = 200) => Response.json(data, { status, headers: { "cache-control": "no-store" } });
 const errorResponse = (message: string, status = 400, extra: Record<string, unknown> = {}) => json({ error: message, ...extra }, status);
 const code = (prefix: string) => `${prefix}-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0, 4).toUpperCase()}`;
+const safeStoreMessage = (cause: unknown, fallback: string) => {
+  const message = cause instanceof Error ? cause.message.trim() : "";
+  const allowed = [
+    "Agregá al menos un producto al carrito.", "El carrito está vacío.", "Este carrito ya generó un pedido.",
+    "Uno de los productos ya no está disponible.", "La reserva venció. Volvé al carrito para comprobar la disponibilidad.",
+    "Ingresá tu nombre y apellido.", "Ingresá un teléfono válido.", "Revisá las cantidades del carrito e intentá nuevamente.",
+    "No se pudo validar el pedido. Intentá nuevamente.",
+  ];
+  if (allowed.includes(message) || /^Solo quedan [\d.,]+ unidades disponibles de .+\.$/.test(message)) return message;
+  return fallback;
+};
 
 let schemaPromise: Promise<void> | null = null;
 function ensureStoreSchema() {
@@ -50,6 +61,7 @@ function ensureStoreSchema() {
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_expired_at TIMESTAMPTZ"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_cancel_reason TEXT"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_customer_snapshot JSONB"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_access_token TEXT"),
       db().prepare("ALTER TABLE payments ADD COLUMN IF NOT EXISTS store_payment_key TEXT"),
       db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS payments_store_payment_key_uq ON payments(store_payment_key) WHERE store_payment_key IS NOT NULL"),
       db().prepare("UPDATE products SET store_published=TRUE WHERE store_published IS NULL"),
@@ -57,6 +69,7 @@ function ensureStoreSchema() {
       db().prepare("CREATE TABLE IF NOT EXISTS store_reservations (id BIGSERIAL PRIMARY KEY, token TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','COMMITTED','EXPIRED','RELEASED')), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
       db().prepare("CREATE TABLE IF NOT EXISTS store_reservation_items (id BIGSERIAL PRIMARY KEY, reservation_id BIGINT NOT NULL REFERENCES store_reservations(id) ON DELETE CASCADE, product_id INTEGER NOT NULL REFERENCES products(id), quantity NUMERIC NOT NULL CHECK(quantity>0), unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents>=0), UNIQUE(reservation_id,product_id))"),
       db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS orders_store_idempotency_uq ON orders(store_idempotency_key) WHERE store_idempotency_key IS NOT NULL"),
+      db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS orders_store_access_token_uq ON orders(store_access_token) WHERE store_access_token IS NOT NULL"),
       db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS orders_store_reservation_uq ON orders(store_reservation_id) WHERE store_reservation_id IS NOT NULL"),
       db().prepare("CREATE INDEX IF NOT EXISTS order_items_product_store_idx ON order_items(product_id,order_id)"),
       db().prepare("CREATE INDEX IF NOT EXISTS store_orders_commitment_idx ON orders(store_source,store_status,expected_at) WHERE store_source='STORE' AND store_stock_committed_at IS NOT NULL"),
@@ -82,13 +95,14 @@ const parseImagePath = (value: unknown) => {
 };
 
 const cleanCartItems = (value: unknown): CartItemInput[] => {
-  if (!Array.isArray(value)) return [];
+  if (!Array.isArray(value) || !value.length || value.length > 50) throw new Error("Revisá las cantidades del carrito e intentá nuevamente.");
   const grouped = new Map<number, number>();
   for (const raw of value) {
     const row = raw as Record<string, unknown>;
     const productId = asNumber(row?.productId);
     const quantity = asNumber(row?.quantity);
-    if (Number.isInteger(productId) && productId > 0 && Number.isFinite(quantity) && quantity > 0) grouped.set(productId, (grouped.get(productId) ?? 0) + quantity);
+    if (!Number.isInteger(productId) || productId <= 0 || !Number.isFinite(quantity) || quantity <= 0 || quantity > 10000) throw new Error("Revisá las cantidades del carrito e intentá nuevamente.");
+    grouped.set(productId, (grouped.get(productId) ?? 0) + quantity);
   }
   return [...grouped.entries()].map(([productId, quantity]) => ({ productId, quantity }));
 };
@@ -119,7 +133,7 @@ async function listStoreProducts(token = ""): Promise<StoreProduct[]> {
       (SELECT value_json FROM app_settings WHERE key='product_image_'||p.id) image_path
     FROM products p JOIN code_base cb ON cb.id=p.code_base_id LEFT JOIN categories c ON c.id=p.category_id
     LEFT JOIN reserved ON reserved.product_id=p.id LEFT JOIN committed ON committed.product_id=p.id
-    WHERE p.active=1 AND p.store_published=TRUE ORDER BY cb.name`).bind(token).all<Row>();
+    WHERE p.active=1 AND p.store_published=TRUE AND p.sale_price_cents>0 ORDER BY cb.name`).bind(token).all<Row>();
   return result.results.map((row) => ({
     id: asNumber(row.id), code: asString(row.code), name: asString(row.name), description: asString(row.description), category: asString(row.category) || "Colección KHORA", type: asString(row.type), priceCents: asNumber(row.sale_price_cents), stock: asNumber(row.current_stock), availableStock: asNumber(row.available_stock), imagePath: parseImagePath(row.image_path), published: Boolean(row.store_published),
   }));
@@ -169,7 +183,7 @@ async function reserveCart(tokenInput: unknown, itemsInput: unknown) {
     const byId = new Map(availability.map((row) => [asNumber(row.id), row]));
     for (const item of items) {
       const product = byId.get(item.productId);
-      if (!product || !Boolean(product.active) || !Boolean(product.store_published)) throw new Error("Uno de los productos ya no está disponible.");
+      if (!product || !Boolean(product.active) || !Boolean(product.store_published) || asNumber(product.sale_price_cents) <= 0) throw new Error("Uno de los productos ya no está disponible.");
       if (item.quantity > asNumber(product.available_stock) + 0.000001) throw new Error(`Solo quedan ${asNumber(product.available_stock)} unidades disponibles de ${asString(product.name)}.`);
     }
     if (!reservation) {
@@ -199,9 +213,12 @@ async function releaseCart(tokenInput: unknown) {
     return { released: Boolean(released) };
   });
 }
-async function orderByNumber(number: string) {
+async function orderByNumber(number: string, accessToken: string) {
+  if (!number || !accessToken) return null;
+  await db().prepare("UPDATE orders SET store_status='EXPIRED',status='CANCELLED',payment_status='CANCELLED',store_expired_at=COALESCE(store_expired_at,CURRENT_TIMESTAMP),cancelled_at=COALESCE(cancelled_at,CURRENT_TIMESTAMP),updated_at=CURRENT_TIMESTAMP WHERE number=? AND store_source='STORE' AND store_access_token=? AND COALESCE(store_status,'PENDING_PAYMENT')='PENDING_PAYMENT' AND expected_at IS NOT NULL AND CAST(expected_at AS TIMESTAMPTZ)<=CURRENT_TIMESTAMP").bind(number, accessToken).run();
+  await db().prepare("UPDATE store_reservations SET status='RELEASED',updated_at=CURRENT_TIMESTAMP WHERE status IN ('ACTIVE','COMMITTED') AND id=(SELECT store_reservation_id FROM orders WHERE number=? AND store_source='STORE' AND store_access_token=? AND store_status='EXPIRED')").bind(number, accessToken).run();
   const order = await db().prepare(`SELECT o.id,o.number,o.created_at,o.expected_at,o.total_cents,o.status,o.payment_status,o.store_status,o.store_customer_snapshot,c.name client_name,c.phone client_phone,c.email client_email,c.address client_address
-    FROM orders o LEFT JOIN clients c ON c.id=o.client_id WHERE o.number=? AND o.store_source='STORE'`).bind(number).first<Row>();
+    FROM orders o LEFT JOIN clients c ON c.id=o.client_id WHERE o.number=? AND o.store_source='STORE' AND o.store_access_token=?`).bind(number, accessToken).first<Row>();
   if (!order) return null;
   let snapshot: Record<string, unknown> = {};
   if (order.store_customer_snapshot && typeof order.store_customer_snapshot === "object") snapshot = order.store_customer_snapshot as Record<string, unknown>;
@@ -265,8 +282,8 @@ async function createStoreOrder(body: Record<string, unknown>) {
   if (!isValidClientPhone(phone)) throw new Error("Ingresá un teléfono válido.");
   try {
     const result = await withKhoraTransaction(async (tx) => {
-      const existing = await tx.prepare("SELECT number FROM orders WHERE store_idempotency_key=? AND store_source='STORE'").bind(idempotencyKey).first<Row>();
-      if (existing) return { duplicateNumber: asString(existing.number) };
+      const existing = await tx.prepare("SELECT number,store_access_token FROM orders WHERE store_idempotency_key=? AND store_source='STORE'").bind(idempotencyKey).first<Row>();
+      if (existing) return { duplicateNumber: asString(existing.number), accessToken: asString(existing.store_access_token) };
       const reservationSummary = await tx.prepare("SELECT id,status,expires_at FROM store_reservations WHERE token=?").bind(token).first<Row>();
       if (!reservationSummary) throw new Error("La reserva venció. Volvé al carrito para comprobar la disponibilidad.");
       const initialItems = (await tx.prepare("SELECT product_id FROM store_reservation_items WHERE reservation_id=? ORDER BY id").bind(asNumber(reservationSummary.id)).all<Row>()).results;
@@ -281,7 +298,8 @@ async function createStoreOrder(body: Record<string, unknown>) {
         FROM store_reservation_items sri JOIN products p ON p.id=sri.product_id JOIN code_base cb ON cb.id=p.code_base_id
         WHERE sri.reservation_id=? ORDER BY sri.id`).bind(asNumber(reservation.id)).all<Row>()).results;
       if (!reservationItems.length || reservationItems.length !== productIds.length) throw new Error("Uno de los productos ya no está disponible.");
-      const changed = reservationItems.filter((item) => !Boolean(item.active) || !Boolean(item.store_published) || asNumber(item.unit_price_cents) !== asNumber(item.sale_price_cents)).map((item) => ({ productId: asNumber(item.product_id), name: asString(item.name), oldPriceCents: asNumber(item.unit_price_cents), newPriceCents: asNumber(item.sale_price_cents) }));
+      if (reservationItems.some((item) => !Boolean(item.active) || !Boolean(item.store_published) || asNumber(item.sale_price_cents) <= 0)) throw new Error("Uno de los productos ya no está disponible.");
+      const changed = reservationItems.filter((item) => asNumber(item.unit_price_cents) !== asNumber(item.sale_price_cents)).map((item) => ({ productId: asNumber(item.product_id), name: asString(item.name), oldPriceCents: asNumber(item.unit_price_cents), newPriceCents: asNumber(item.sale_price_cents) }));
       if (changed.length) return { priceChanged: true, changes: changed };
       const placeholders = productIds.map(() => "?").join(",");
       const availability = (await tx.prepare(`SELECT p.id,cb.code,cb.name,p.sale_price_cents,p.current_stock,
@@ -306,7 +324,8 @@ async function createStoreOrder(body: Record<string, unknown>) {
       if (!number) throw new Error("No se pudo generar el número de pedido.");
       const totalCents = reservationItems.reduce((sum, item) => sum + Math.round(asNumber(item.quantity) * asNumber(item.sale_price_cents)), 0);
       const snapshotItems = reservationItems.map((item) => ({ productId: asNumber(item.product_id), name: asString(item.name), quantity: asNumber(item.quantity), priceCents: asNumber(item.sale_price_cents), lineTotalCents: Math.round(asNumber(item.quantity) * asNumber(item.sale_price_cents)) }));
-      const createdOrder = await tx.prepare("INSERT INTO orders(number,client_id,status,payment_status,subtotal_cents,total_cents,expected_at,delivery_address,notes,store_source,store_idempotency_key,store_reservation_id,store_stock_committed_at,store_status,store_customer_snapshot) VALUES(?,?, 'PENDING','PENDING',?,?,(CURRENT_TIMESTAMP + INTERVAL '24 hours')::text,?,?, 'STORE',?,?,CURRENT_TIMESTAMP,'PENDING_PAYMENT',?::jsonb) RETURNING id").bind(number, clientId, totalCents, totalCents, location || null, `Origen: KHORA Tienda · ${phone}`, idempotencyKey, asNumber(reservation.id), JSON.stringify({ name, phone, email, location, items: snapshotItems })).first<Row>();
+      const accessToken = crypto.randomUUID();
+      const createdOrder = await tx.prepare("INSERT INTO orders(number,client_id,status,payment_status,subtotal_cents,total_cents,expected_at,delivery_address,notes,store_source,store_idempotency_key,store_reservation_id,store_stock_committed_at,store_status,store_customer_snapshot,store_access_token) VALUES(?,?, 'PENDING','PENDING',?,?,(CURRENT_TIMESTAMP + INTERVAL '24 hours')::text,?,?, 'STORE',?,?,CURRENT_TIMESTAMP,'PENDING_PAYMENT',?::jsonb,?) RETURNING id").bind(number, clientId, totalCents, totalCents, location || null, `Origen: KHORA Tienda · ${phone}`, idempotencyKey, asNumber(reservation.id), JSON.stringify({ name, phone, email, location, items: snapshotItems }), accessToken).first<Row>();
       const orderId = asNumber(createdOrder?.id);
       if (!orderId) throw new Error("No se pudo crear el pedido.");
       await tx.batch([
@@ -314,17 +333,17 @@ async function createStoreOrder(body: Record<string, unknown>) {
         tx.prepare("UPDATE store_reservations SET status='COMMITTED',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='ACTIVE'").bind(asNumber(reservation.id)),
         tx.prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','ORDER',?,'KHORA Tienda',?,?)").bind(orderId, `Pedido ${number} generado desde KHORA Tienda`, JSON.stringify({ source: "STORE", customerId: clientId, reservedUntil: asString(reservation.expires_at), committedUntilHours: 24, itemSnapshot: snapshotItems })),
       ]);
-      return { number, possibleExistingClient: client.possibleExistingClient };
+      return { number, accessToken, possibleExistingClient: client.possibleExistingClient };
     });
-    if ("duplicateNumber" in result) return { order: await orderByNumber(asString(result.duplicateNumber)), duplicate: true, settings: await getSettings() };
+    if ("duplicateNumber" in result) return { order: await orderByNumber(asString(result.duplicateNumber), asString(result.accessToken)), duplicate: true, settings: await getSettings(), accessToken: asString(result.accessToken) };
     if ("priceChanged" in result && result.priceChanged) return { priceChanged: true, changes: result.changes, products: await listStoreProducts(token) };
-    return { order: await orderByNumber(asString(result.number)), duplicate: false, settings: await getSettings(), possibleExistingClient: Boolean(result.possibleExistingClient) };
+    return { order: await orderByNumber(asString(result.number), asString(result.accessToken)), duplicate: false, settings: await getSettings(), accessToken: asString(result.accessToken), possibleExistingClient: Boolean(result.possibleExistingClient) };
   } catch (cause) {
     // A repeated click can race the idempotency lookup; the unique key is the
     // final authority and the already committed order is returned to the client.
     if ((cause as { code?: string })?.code === "23505") {
-      const duplicate = await db().prepare("SELECT number FROM orders WHERE store_idempotency_key=? AND store_source='STORE'").bind(idempotencyKey).first<Row>();
-      if (duplicate) return { order: await orderByNumber(asString(duplicate.number)), duplicate: true, settings: await getSettings() };
+      const duplicate = await db().prepare("SELECT number,store_access_token FROM orders WHERE store_idempotency_key=? AND store_source='STORE'").bind(idempotencyKey).first<Row>();
+      if (duplicate) return { order: await orderByNumber(asString(duplicate.number), asString(duplicate.store_access_token)), duplicate: true, settings: await getSettings(), accessToken: asString(duplicate.store_access_token) };
     }
     throw cause;
   }
@@ -342,12 +361,12 @@ export async function GET(request: Request) {
       return product ? json({ product }) : errorResponse("Producto no disponible.", 404);
     }
     if (entity === "order") {
-      const order = await orderByNumber(asString(url.searchParams.get("number")));
-      return order ? json({ order, settings: await getSettings() }) : errorResponse("Pedido inexistente.", 404);
+      const order = await orderByNumber(asString(url.searchParams.get("number")), asString(url.searchParams.get("access")));
+      return order ? json({ order, settings: await getSettings() }) : errorResponse("No pudimos abrir este pedido. Revisá el enlace de confirmación o volvé a la tienda.", 404);
     }
     return errorResponse("Entidad desconocida.", 404);
   } catch (cause) {
-    return errorResponse(cause instanceof Error ? cause.message : "No se pudo cargar la tienda.", 500);
+    return errorResponse(safeStoreMessage(cause, "No pudimos cargar la tienda. Revisá tu conexión e intentá nuevamente."), 500);
   }
 }
 
@@ -364,6 +383,6 @@ export async function POST(request: Request) {
     }
     return errorResponse("Acción desconocida.", 404);
   } catch (cause) {
-    return errorResponse(cause instanceof Error ? cause.message : "No se pudo completar la operación.", 400);
+    return errorResponse(safeStoreMessage(cause, "No pudimos completar esta acción. Revisá tu conexión e intentá nuevamente."), 400);
   }
 }

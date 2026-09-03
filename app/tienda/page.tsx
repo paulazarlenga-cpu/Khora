@@ -12,13 +12,17 @@ type StoreOrder = { number: string; expiresAt: string; totalCents: number; statu
 const money = (cents: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(cents / 100);
 const formatQuantity = (value: number) => Number.isInteger(value) ? String(value) : value.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 const productImage = (product: Product) => product.imagePath && /^(https?:|\/)/.test(product.imagePath) ? product.imagePath : null;
-const readToken = () => { try { return localStorage.getItem("khora-store-token") ?? ""; } catch { return ""; } }; const readExpiresAt = () => { try { return localStorage.getItem("khora-store-expires") ?? ""; } catch { return ""; } };
+const friendlyError = (cause: unknown, fallback: string) => {
+  const message = cause instanceof Error ? cause.message : "";
+  return /^(Solo quedan |Uno de los productos ya no está disponible\.|La reserva venció\.|El precio de uno o más productos se actualizó\.|Ingresá |Revisá las cantidades|No pudimos )/.test(message) ? message : fallback;
+};
+const readToken = () => { try { return localStorage.getItem("khora-store-token") ?? ""; } catch { return ""; } }; const readExpiresAt = () => { try { return localStorage.getItem("khora-store-expires") ?? ""; } catch { return ""; } }; const readCheckoutKey = () => { try { return localStorage.getItem("khora-store-checkout-key") ?? ""; } catch { return ""; } };
 const readCart = (): CartLine[] => { try { const value = JSON.parse(localStorage.getItem("khora-store-cart") ?? "[]"); return Array.isArray(value) ? value : []; } catch { return []; } };
-const viewFromLocation = (): { view: View; productId?: number; orderNumber?: string } => {
+const viewFromLocation = (): { view: View; productId?: number; orderNumber?: string; orderAccess?: string } => {
   const params = new URLSearchParams(window.location.search);
   const orderNumber = params.get("pedido") ?? undefined;
   const productId = Number(params.get("producto"));
-  if (orderNumber) return { view: "confirmation", orderNumber };
+  if (orderNumber) return { view: "confirmation", orderNumber, orderAccess: params.get("acceso") ?? undefined };
   if (params.get("vista") === "carrito") return { view: "cart" };
   if (params.get("vista") === "datos") return { view: "details" };
   if (productId) return { view: "product", productId };
@@ -42,9 +46,11 @@ export default function StorePage() {
   const [settings, setSettings] = useState<{ whatsapp: string; businessName: string }>({ whatsapp: "", businessName: "KHORA" });
   const [order, setOrder] = useState<StoreOrder | null>(null);
   const [initialOrderNumber, setInitialOrderNumber] = useState("");
+  const [initialOrderAccess, setInitialOrderAccess] = useState("");
   const [whatsappError, setWhatsappError] = useState("");
   const [copiedOrder, setCopiedOrder] = useState(false);
   const [checkoutKey, setCheckoutKey] = useState("");
+  const [catalogRefresh, setCatalogRefresh] = useState(0);
   const [customer, setCustomer] = useState({ name: "", phone: "", email: "", location: "" });
 
   const categories = useMemo(() => ["Todas", ...Array.from(new Set(products.map((product) => product.category).filter(Boolean)))], [products]);
@@ -57,8 +63,8 @@ export default function StorePage() {
     const initial = viewFromLocation();
     // Hydrate the client-only URL and localStorage state after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setView(initial.view); setSelectedProductId(initial.productId); setInitialOrderNumber(initial.orderNumber || ""); setToken(readToken()); setExpiresAt(readExpiresAt()); setCart(readCart());
-    const onPopState = () => { const next = viewFromLocation(); setView(next.view); setSelectedProductId(next.productId); setInitialOrderNumber(next.orderNumber || ""); setOrder(null); setWhatsappError(""); };
+    setView(initial.view); setSelectedProductId(initial.productId); setInitialOrderNumber(initial.orderNumber || ""); setInitialOrderAccess(initial.orderAccess || ""); setToken(readToken()); setExpiresAt(readExpiresAt()); setCart(readCart()); setCheckoutKey(readCheckoutKey());
+    const onPopState = () => { const next = viewFromLocation(); setView(next.view); setSelectedProductId(next.productId); setInitialOrderNumber(next.orderNumber || ""); setInitialOrderAccess(next.orderAccess || ""); setOrder(null); setWhatsappError(""); };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -68,21 +74,21 @@ export default function StorePage() {
     // Show the loading state whenever the reservation token changes.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
-    fetch(`/api/tienda?entity=products${token ? `&token=${encodeURIComponent(token)}` : ""}`).then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "No se pudo cargar el catálogo."); return data as { products: Product[]; reservationExpiresAt?: string }; }).then((data) => { if (active) { setProducts(data.products); if (data.reservationExpiresAt) { setExpiresAt(data.reservationExpiresAt); try { localStorage.setItem("khora-store-expires", data.reservationExpiresAt); } catch { /* optional persistence */ } } setError(""); } }).catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "No se pudo cargar el catálogo."); }).finally(() => { if (active) setLoading(false); });
+    fetch(`/api/tienda?entity=products${token ? `&token=${encodeURIComponent(token)}` : ""}`).then(async (response) => { const data = await response.json(); if (!response.ok) throw new Error(data.error ?? "No pudimos cargar la colección. Revisá tu conexión e intentá nuevamente."); return data as { products: Product[]; reservationExpiresAt?: string }; }).then((data) => { if (active) { setProducts(data.products); if (data.reservationExpiresAt) { setExpiresAt(data.reservationExpiresAt); try { localStorage.setItem("khora-store-expires", data.reservationExpiresAt); } catch { /* optional persistence */ } } setError(""); } }).catch((cause) => { if (active) setError(friendlyError(cause, "No pudimos cargar la colección. Revisá tu conexión e intentá nuevamente.")); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [token]);
+  }, [token, catalogRefresh]);
 
   useEffect(() => { fetch("/api/tienda?entity=settings").then((response) => response.json()).then((data) => setSettings({ whatsapp: String(data.whatsapp ?? ""), businessName: String(data.businessName ?? "KHORA") })).catch(() => undefined); }, []);
 
   useEffect(() => {
-    if (view !== "confirmation" || !initialOrderNumber || order) return;
+    if (view !== "confirmation" || !initialOrderNumber || !initialOrderAccess || order) return;
     let active = true;
-    fetch(`/api/tienda?entity=order&number=${encodeURIComponent(initialOrderNumber)}`)
+    fetch(`/api/tienda?entity=order&number=${encodeURIComponent(initialOrderNumber)}&access=${encodeURIComponent(initialOrderAccess)}`)
       .then(async (response) => { const data = await response.json() as { order?: StoreOrder; settings?: { whatsapp?: string; businessName?: string }; error?: string }; if (!response.ok || !data.order) throw new Error(data.error || "No pudimos encontrar este pedido."); return data; })
       .then((data) => { if (!active) return; setOrder(data.order || null); if (data.settings) setSettings({ whatsapp: String(data.settings.whatsapp || ""), businessName: String(data.settings.businessName || "KHORA") }); setError(""); })
-      .catch((cause) => { if (active) { setOrder(null); setError(cause instanceof Error ? cause.message : "No pudimos encontrar este pedido."); } });
+      .catch((cause) => { if (active) { setOrder(null); setError(friendlyError(cause, "No pudimos abrir este pedido. Revisá el enlace de confirmación o volvé a la tienda.")); } });
     return () => { active = false; };
-  }, [initialOrderNumber, order, view]);
+  }, [initialOrderAccess, initialOrderNumber, order, view]);
 
   useEffect(() => {
     if (!expiresAt) {
@@ -94,15 +100,15 @@ export default function StorePage() {
     return () => window.clearInterval(timer);
   }, [expiresAt]);
 
-  function navigate(nextView: View, productId?: number, orderNumber?: string) {
+  function navigate(nextView: View, productId?: number, orderNumber?: string, orderAccess?: string) {
     const params = new URLSearchParams();
     if (nextView === "product" && productId) params.set("producto", String(productId));
     if (nextView === "cart") params.set("vista", "carrito");
     if (nextView === "details") params.set("vista", "datos");
-    if (nextView === "confirmation" && orderNumber) params.set("pedido", orderNumber);
+    if (nextView === "confirmation" && orderNumber) { params.set("pedido", orderNumber); if (orderAccess) params.set("acceso", orderAccess); }
     const suffix = params.toString() ? `?${params}` : "";
     window.history.pushState({}, "", `/tienda${suffix}`);
-    setView(nextView); setSelectedProductId(productId); if (nextView === "confirmation") setInitialOrderNumber(orderNumber || ""); setWhatsappError(""); window.scrollTo({ top: 0, behavior: "smooth" });
+    setView(nextView); setSelectedProductId(productId); if (nextView === "confirmation") { setInitialOrderNumber(orderNumber || ""); setInitialOrderAccess(orderAccess || ""); } setWhatsappError(""); window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function saveCart(next: CartLine[]) { setCart(next); try { localStorage.setItem("khora-store-cart", JSON.stringify(next)); } catch { /* optional persistence */ } }
@@ -117,7 +123,7 @@ export default function StorePage() {
       setExpiresAt(String(data.expiresAt)); try { localStorage.setItem("khora-store-expires", String(data.expiresAt)); } catch { /* optional persistence */ } setReservationExpired(false);
       const updates = new Map<number, { productId: number; priceCents: number; availableStock: number }>((data.items ?? []).map((item: { productId: number; priceCents: number; availableStock: number }) => [Number(item.productId), item] as const));
       saveCart(nextCart.map((item) => ({ ...item, priceCents: Number(updates.get(item.id)?.priceCents ?? item.priceCents), availableStock: Number(updates.get(item.id)?.availableStock ?? item.availableStock) })));
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "No pudimos reservar estos productos."); throw cause; } finally { setSaving(false); }
+    } catch (cause) { setError(friendlyError(cause, "No pudimos reservar estos productos. Revisá tu conexión e intentá nuevamente.")); throw cause; } finally { setSaving(false); }
   }
 
   async function addToCart(product: Product, quantity = 1) {
@@ -142,7 +148,7 @@ export default function StorePage() {
   async function createOrder(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!cart.length) { navigate("cart"); return; }
     setSaving(true); setError("");
-    const key = checkoutKey || crypto.randomUUID(); setCheckoutKey(key);
+    const key = checkoutKey || readCheckoutKey() || crypto.randomUUID(); setCheckoutKey(key); try { localStorage.setItem("khora-store-checkout-key", key); } catch { /* optional persistence */ }
     try {
       const response = await fetch("/api/tienda", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "create_order", token, idempotencyKey: key, customer }) });
       const data = await response.json();
@@ -151,9 +157,9 @@ export default function StorePage() {
         const updatedCart = cart.map((item) => updates.has(item.id) ? { ...item, priceCents: updates.get(item.id)! } : item); saveCart(updatedCart); try { await syncReservation(updatedCart); } catch { /* keep the latest reservation error visible */ }
         setError("El precio de uno o más productos se actualizó. Revisá el nuevo total antes de generar el pedido."); return;
       }
-      if (!response.ok) throw new Error(data.error ?? "No se pudo generar el pedido.");
-      setOrder(data.order); if (data.settings) setSettings(data.settings); saveCart([]); setExpiresAt(""); try { localStorage.removeItem("khora-store-expires"); localStorage.removeItem("khora-store-token"); } catch { /* optional persistence */ } setCheckoutKey(""); setNotice(""); navigate("confirmation", undefined, data.order.number);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo generar el pedido."); } finally { setSaving(false); }
+      if (!response.ok || !data.order || !data.accessToken) throw new Error(data.error ?? "No pudimos generar el pedido. Tu bolsa sigue disponible.");
+      setOrder(data.order); if (data.settings) setSettings(data.settings); saveCart([]); setExpiresAt(""); try { localStorage.removeItem("khora-store-expires"); localStorage.removeItem("khora-store-token"); localStorage.removeItem("khora-store-checkout-key"); } catch { /* optional persistence */ } setCheckoutKey(""); setNotice(""); navigate("confirmation", undefined, data.order.number, String(data.accessToken));
+    } catch (cause) { setError(friendlyError(cause, "No pudimos generar el pedido. Tu bolsa sigue disponible.")); } finally { setSaving(false); }
   }
 
   function whatsappUrl() { return order && settings.whatsapp ? buildWhatsAppLink(settings.whatsapp, buildStoreOrderWhatsAppMessage(order)) : ""; }
@@ -173,11 +179,12 @@ export default function StorePage() {
     {notice && <div className={styles.notice} role="status">{notice}<button onClick={() => setNotice("")} aria-label="Cerrar aviso">×</button></div>}
     {error && <div className={styles.error} role="alert">{error}<button onClick={() => setError("")} aria-label="Cerrar error">×</button></div>}
     {view === "home" && <>
-      <main><section className={styles.hero}><div><p className={styles.eyebrow}>OBJETOS PARA HABITAR DESPACIO</p><h1>Lo cotidiano,<br /><em>con intención.</em></h1><p>Pequeños objetos hechos para acompañar tu casa y tus momentos de todos los días.</p><button className={styles.primary} onClick={() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" })}>Descubrir KHORA <span>→</span></button></div><div className={styles.heroImage} aria-label="Colección KHORA"><span>KH</span></div></section><section className={styles.catalog} id="catalogo"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>LA COLECCIÓN</p><h2>Elegidos para tu espacio</h2></div><p>Diseño simple, materiales nobles y una pausa para lo esencial.</p></div><div className={styles.filters}><div className={styles.categoryList}>{categories.map((item) => <button key={item} className={category === item ? styles.selectedFilter : ""} onClick={() => setCategory(item)}>{item}</button>)}</div><label className={styles.catalogSearch}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre…" aria-label="Buscar en el catálogo" /></label></div>{loading ? <p className={styles.empty}>Cargando la colección…</p> : <div className={styles.grid}>{filteredProducts.map((product) => <ProductCard key={product.id} product={product} onOpen={() => navigate("product", product.id)} onAdd={() => addToCart(product)} />)}</div>}{!loading && !filteredProducts.length && <p className={styles.empty}>No encontramos productos con esa búsqueda.</p>}</section><section className={styles.story} id="historia"><div><p className={styles.eyebrow}>LA MIRADA KHORA</p><h2>Hecho para quedarse.</h2></div><p>Creamos objetos honestos, calmos y duraderos. Cada pieza encuentra su lugar cuando suma belleza sin pedir atención.</p><button className={styles.linkButton} onClick={() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" })}>Ver la colección <span>→</span></button></section></main><Footer /></>}
+      <main><section className={styles.hero}><div><p className={styles.eyebrow}>OBJETOS PARA HABITAR DESPACIO</p><h1>Lo cotidiano,<br /><em>con intención.</em></h1><p>Pequeños objetos hechos para acompañar tu casa y tus momentos de todos los días.</p><button className={styles.primary} onClick={() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" })}>Descubrir KHORA <span>→</span></button></div><div className={styles.heroImage} aria-label="Colección KHORA"><span>KH</span></div></section><section className={styles.catalog} id="catalogo"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>LA COLECCIÓN</p><h2>Elegidos para tu espacio</h2></div><p>Diseño simple, materiales nobles y una pausa para lo esencial.</p></div><div className={styles.filters}><div className={styles.categoryList}>{categories.map((item) => <button key={item} className={category === item ? styles.selectedFilter : ""} onClick={() => setCategory(item)}>{item}</button>)}</div><label className={styles.catalogSearch}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre…" aria-label="Buscar en el catálogo" /></label></div>{loading ? <p className={styles.empty}>Cargando la colección…</p> : error && !products.length ? <div className={styles.emptyPanel} role="alert"><h2>No pudimos cargar la colección</h2><p>Revisá tu conexión e intentá nuevamente.</p><button className={styles.primary} onClick={() => { setError(""); setCatalogRefresh((value) => value + 1); }}>Reintentar <span>→</span></button></div> : <div className={styles.grid}>{filteredProducts.map((product) => <ProductCard key={product.id} product={product} onOpen={() => navigate("product", product.id)} onAdd={() => addToCart(product)} />)}</div>}{!loading && !error && !filteredProducts.length && <p className={styles.empty}>No encontramos productos con esa búsqueda.</p>}</section><section className={styles.story} id="historia"><div><p className={styles.eyebrow}>LA MIRADA KHORA</p><h2>Hecho para quedarse.</h2></div><p>Creamos objetos honestos, calmos y duraderos. Cada pieza encuentra su lugar cuando suma belleza sin pedir atención.</p><button className={styles.linkButton} onClick={() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" })}>Ver la colección <span>→</span></button></section></main><Footer /></>}
     {view === "product" && selectedProduct && <ProductDetail product={selectedProduct} onBack={() => navigate("home")} onAdd={(quantity) => addToCart(selectedProduct, quantity)} />}
     {view === "cart" && <CartView cart={cart} total={cartTotal} expiresAt={expiresAt} expired={reservationExpired} saving={saving} onBack={() => navigate("home")} onChange={changeQuantity} onRemove={(item) => syncReservation(cart.filter((line) => line.id !== item.id))} onContinue={continueToDetails} />}
     {view === "details" && <CustomerForm customer={customer} setCustomer={setCustomer} cart={cart} total={cartTotal} saving={saving} onBack={() => navigate("cart")} onSubmit={createOrder} />}
     {view === "confirmation" && order && <Confirmation order={order} configured={Boolean(settings.whatsapp)} whatsappError={whatsappError} copiedOrder={copiedOrder} onCopyOrder={copyOrderNumber} onWhatsApp={openWhatsApp} onBack={() => navigate("home")} />}
+    {view === "confirmation" && !order && !loading && <main className={styles.confirmation}><div className={styles.confirmMark}>!</div><p className={styles.eyebrow}>KHORA TIENDA</p><h1>No pudimos abrir este pedido</h1><p className={styles.confirmLead}>Revisá el enlace de confirmación. Si el pedido venció o fue cancelado, volvé a la tienda para generar uno nuevo.</p><button className={styles.primary} onClick={() => navigate("home")}>Volver a la tienda <span>→</span></button></main>}
   </div>;
 }
 
