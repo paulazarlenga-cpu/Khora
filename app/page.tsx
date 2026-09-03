@@ -155,7 +155,7 @@ export default function Home() {
       </main>
     </div>
     {createKind && <div className="drawer-layer" role="presentation"><button className="drawer-backdrop" onClick={() => setCreateKind(null)} aria-label="Cerrar formulario" /><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title"><div className="drawer-header"><div><p>NUEVO REGISTRO</p><h2 id="drawer-title">{drawerTitle(createKind)}</h2></div><button onClick={() => setCreateKind(null)} aria-label="Cerrar">×</button></div><CreateForm kind={createKind} onSubmit={saveCreate} onCancel={() => setCreateKind(null)} /></aside></div>}
-    {profilePanel === "settings" && <ProfilePanel kind="settings" email={userEmail} onClose={() => setProfilePanel(null)} />}
+    {profilePanel === "settings" && <SettingsPanel email={userEmail} onClose={() => setProfilePanel(null)} />}
     {profilePanel === "profile" && <ProfilePanel kind="profile" email={userEmail} onClose={() => setProfilePanel(null)} />}
   </div>;
 }
@@ -163,6 +163,25 @@ export default function Home() {
 function ProfilePanel({ kind, email, onClose }: { kind: "settings" | "profile"; email: string; onClose: () => void }) {
   const settings = kind === "settings";
   return <div className="drawer-layer profile-panel-layer"><button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar panel" /><aside className="drawer profile-panel" role="dialog" aria-modal="true" aria-labelledby="profile-panel-title"><div className="drawer-header"><div><p>{settings ? "KHORA · CONFIGURACIÓN" : "KHORA · CUENTA"}</p><h2 id="profile-panel-title">{settings ? "Configuración" : "Mi perfil"}</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></div><div className="profile-panel-body">{settings ? <><section><strong>Cuenta conectada</strong><p>{email}</p><small>Tu sesión está protegida por Supabase Auth.</small></section><section><strong>Preferencias operativas</strong><p>Las alertas, movimientos y documentos se calculan con los datos reales del negocio.</p><small>Podés administrar el detalle desde cada módulo sin modificar el historial.</small></section><section><strong>Seguridad</strong><p>RLS y permisos activos</p><small>KHORA mantiene la base protegida para usuarios autorizados.</small></section></> : <><div className="profile-panel-avatar">PZ</div><section><strong>Paula</strong><p>{email}</p><small>Administradora del negocio</small></section><section><strong>Acceso</strong><p>Cuenta activa</p><small>Podés cerrar sesión desde el menú superior.</small></section></>}</div><footer><Button variant="primary" size="md" onClick={onClose}>Listo</Button></footer></aside></div>;
+}
+
+function SettingsPanel({ email, onClose }: { email: string; onClose: () => void }) {
+  const [whatsapp, setWhatsapp] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  useEffect(() => { let active = true; fetch("/api/khora?entity=settings").then((response) => response.json() as Promise<{ whatsapp?: string }>).then((data) => { if (active) setWhatsapp(String(data.whatsapp || "")); }).catch(() => { if (active) setMessage("No pudimos cargar la configuración."); }).finally(() => { if (active) setLoading(false); }); return () => { active = false; }; }, []);
+  async function save() {
+    setSaving(true); setMessage("");
+    try {
+      const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "save_setting", key: "store_whatsapp", value: whatsapp }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "No pudimos guardar el número.");
+      setMessage("WhatsApp de ventas actualizado.");
+      window.dispatchEvent(new CustomEvent("khora:data-changed"));
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : "No pudimos guardar el número."); } finally { setSaving(false); }
+  }
+  return <div className="drawer-layer profile-panel-layer"><button className="drawer-backdrop" onClick={onClose} aria-label="Cerrar panel" /><aside className="drawer profile-panel" role="dialog" aria-modal="true" aria-labelledby="settings-panel-title"><div className="drawer-header"><div><p>KHORA · CONFIGURACIÓN</p><h2 id="settings-panel-title">Configuración</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></div><div className="profile-panel-body"><section><strong>Cuenta conectada</strong><p>{email}</p><small>Tu sesión está protegida por Supabase Auth.</small></section><section><strong>WhatsApp de ventas</strong><p>Es el número que recibe los pedidos de KHORA Tienda.</p><label className="field"><span>Número internacional</span><input type="tel" inputMode="tel" value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} placeholder="Ej. +54 9 11 1234 5678" disabled={loading || saving} /></label><small>No se envían mensajes automáticamente. Solo se abre WhatsApp con un borrador para revisar.</small><button className="secondary-button" onClick={save} disabled={loading || saving}>{saving ? "Guardando…" : "Guardar número"}</button>{message && <small className="form-success">{message}</small>}</section><section><strong>Seguridad</strong><p>RLS y permisos activos</p><small>KHORA mantiene la base protegida para usuarios autorizados.</small></section></div><footer><Button variant="primary" size="md" onClick={onClose}>Listo</Button></footer></aside></div>;
 }
 
 function GlobalSearchPalette({ query, results, selectedIndex, onSelect, onClose }: { query: string; results: GlobalSearchResult[]; selectedIndex: number; onSelect: (result: GlobalSearchResult) => void; onClose: () => void }) {

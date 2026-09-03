@@ -5,6 +5,7 @@ import { allocateFinishedStockFIFO, type FinishedLot } from "../../khora-fifo";
 import { buildKhoraPdf, type KhoraStructuredPdfInput } from "../../khora-pdf";
 import { calculateFinanceTotals } from "../../khora-finance-core";
 import { isValidClientPhone, normalizeClientEmail, normalizeClientPhone } from "../../khora-client";
+import { normalizeWhatsAppNumber } from "../../khora-whatsapp";
 import { createWithGeneratedCode, createWithSequentialCode, nextSequentialCode, type SequentialCodeKind } from "../../khora-codes";
 type Body=Record<string,unknown>;
 type NRow=Record<string,number|string|null|boolean|undefined> & { current_stock?: number|string|null; material?: number|string|null; material_id?: number|string|null; current_cost_cents?: number|string|null; available?: number|string|null; unit?: string|null; required?: number; subtotal_cents?: number|null; raw_material_id?: number|string|null; material_active?: boolean; cost_available?: boolean };
@@ -543,6 +544,12 @@ export async function GET(request:Request){try{
  if(entity==="finance_closures")return ok({rows:(await db().prepare("SELECT * FROM monthly_finance_closures ORDER BY month DESC").all()).results});
  if(entity==="reinvestment_movements")return ok({rows:(await db().prepare("SELECT rm.*,rp.invoice_number purchase_reference,e.code expense_reference FROM reinvestment_movements rm LEFT JOIN raw_material_purchases rp ON rp.id=rm.raw_material_purchase_id LEFT JOIN expenses e ON e.id=rm.expense_id WHERE rm.month=? AND rm.status='CONFIRMED' ORDER BY rm.occurred_at DESC,rm.id DESC").bind(s(url.searchParams.get("month"))||argentinaMonthKey()).all()).results});
  if(entity==="dismissed_alerts"){const row=await db().prepare("SELECT value_json FROM app_settings WHERE key='dismissed_operational_alerts'").first<NRow>();try{return ok({ids:row?.value_json?JSON.parse(s(row.value_json)):[]})}catch{return ok({ids:[]})}}
+ if(entity==="settings"){
+  const rows=(await db().prepare("SELECT key,value_json FROM app_settings WHERE key IN ('business_profile','store_whatsapp')").all()).results as NRow[];
+  const values=new Map(rows.map((row)=>[s(row.key),s(row.value_json)]));let profile:NRow={};try{profile=JSON.parse(values.get("business_profile")||"{}")}catch{profile={};}
+  let configured=values.get("store_whatsapp")||"";try{configured=JSON.parse(configured)}catch{/* plain text */}
+  return ok({businessName:s(profile.name)||"KHORA",whatsapp:normalizeWhatsAppNumber(configured||s(profile.whatsapp)||s(profile.phone))});
+ }
  if(entity==="next_code"&&s(url.searchParams.get("kind")).toUpperCase()==="MIXTURE"){return ok({kind:"MIXTURE",code:nextSequentialCode(await listMixtureCodes(),"MIXTURE")})}
  if(entity==="next_code"){const type=s(url.searchParams.get("kind")).toUpperCase(),kind:SequentialCodeKind=type==="COMBO"?"COMBO":"PRODUCT";return ok({kind,code:nextSequentialCode(await listDefinitionCodes(kind),kind)})}
  if(entity==="next_material_code"){const categoryId=n(url.searchParams.get("categoryId")),category=await getMaterialCategory(categoryId);if(!category)return fail("Elegí una categoría de materia prima activa");const prefix=normalizePrefix(s(category.prefix));return ok({categoryId,prefix,code:suggestMaterialCode(prefix,await listMaterialCodes(prefix))})}
@@ -820,6 +827,7 @@ const manufacturingLotAction=async(action:ManufacturingLotAction,b:Body,actorEma
 
 export async function POST(request:Request){try{const user=await getKhoraUser();if(!user)return fail("No autorizado",401);const b=await request.json() as Body,action=s(b.action),actorEmail=user.email??"sistema";
    await ensureOrderSchema();
+   if(action==="save_setting" && s(b.key)==="store_whatsapp"){const normalized=normalizeWhatsAppNumber(b.value);if(normalized&&(normalized.length<8||normalized.length>15))throw new Error("Ingresá un número de WhatsApp válido en formato internacional.");const value=JSON.stringify(normalized||null);await db().prepare("INSERT INTO app_settings(key,value_json,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP").bind("store_whatsapp",value).run();return ok()}
    if(action==="update_mixture_preparation"){
     const id=n(b.id),quantity=n(b.quantity);if(!id||!Number.isFinite(quantity)||quantity<=0)throw new Error("Preparación o cantidad inválida");
     const prep=await db().prepare("SELECT mp.id,mp.mixture_id,mp.status,mp.actual_quantity old_quantity,ml.id lot_id,ml.initial_quantity,ml.available_quantity,ml.prepared_at,ml.lot_number FROM mixture_preparations mp JOIN mixture_lots ml ON ml.preparation_id=mp.id WHERE mp.id=?").bind(id).first<NRow>();

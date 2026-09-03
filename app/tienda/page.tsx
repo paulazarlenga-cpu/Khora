@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import styles from "./store.module.css";
+import { buildStoreOrderWhatsAppMessage, buildWhatsAppLink } from "../khora-whatsapp";
 
 type View = "home" | "product" | "cart" | "details" | "confirmation";
 type Product = { id: number; code: string; name: string; description: string; category: string; type: string; priceCents: number; stock: number; availableStock: number; imagePath: string | null; published: boolean };
 type CartLine = Product & { quantity: number };
-type StoreOrder = { number: string; expiresAt: string; totalCents: number; customer: { name: string; phone: string; email: string; location: string }; items: Array<{ productId: number; name: string; quantity: number; priceCents: number; lineTotalCents: number }> };
+type StoreOrder = { number: string; expiresAt: string; totalCents: number; status: string; paymentStatus: string; customer: { name: string; phone: string; email: string; location: string }; items: Array<{ productId: number; name: string; quantity: number; priceCents: number; lineTotalCents: number }> };
 
 const money = (cents: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(cents / 100);
 const formatQuantity = (value: number) => Number.isInteger(value) ? String(value) : value.toLocaleString("es-AR", { maximumFractionDigits: 2 });
@@ -40,6 +41,9 @@ export default function StorePage() {
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState<{ whatsapp: string; businessName: string }>({ whatsapp: "", businessName: "KHORA" });
   const [order, setOrder] = useState<StoreOrder | null>(null);
+  const [initialOrderNumber, setInitialOrderNumber] = useState("");
+  const [whatsappError, setWhatsappError] = useState("");
+  const [copiedOrder, setCopiedOrder] = useState(false);
   const [checkoutKey, setCheckoutKey] = useState("");
   const [customer, setCustomer] = useState({ name: "", phone: "", email: "", location: "" });
 
@@ -53,8 +57,8 @@ export default function StorePage() {
     const initial = viewFromLocation();
     // Hydrate the client-only URL and localStorage state after mount.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setView(initial.view); setSelectedProductId(initial.productId); setToken(readToken()); setExpiresAt(readExpiresAt()); setCart(readCart());
-    const onPopState = () => { const next = viewFromLocation(); setView(next.view); setSelectedProductId(next.productId); };
+    setView(initial.view); setSelectedProductId(initial.productId); setInitialOrderNumber(initial.orderNumber || ""); setToken(readToken()); setExpiresAt(readExpiresAt()); setCart(readCart());
+    const onPopState = () => { const next = viewFromLocation(); setView(next.view); setSelectedProductId(next.productId); setInitialOrderNumber(next.orderNumber || ""); setOrder(null); setWhatsappError(""); };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
@@ -69,6 +73,16 @@ export default function StorePage() {
   }, [token]);
 
   useEffect(() => { fetch("/api/tienda?entity=settings").then((response) => response.json()).then((data) => setSettings({ whatsapp: String(data.whatsapp ?? ""), businessName: String(data.businessName ?? "KHORA") })).catch(() => undefined); }, []);
+
+  useEffect(() => {
+    if (view !== "confirmation" || !initialOrderNumber || order) return;
+    let active = true;
+    fetch(`/api/tienda?entity=order&number=${encodeURIComponent(initialOrderNumber)}`)
+      .then(async (response) => { const data = await response.json() as { order?: StoreOrder; settings?: { whatsapp?: string; businessName?: string }; error?: string }; if (!response.ok || !data.order) throw new Error(data.error || "No pudimos encontrar este pedido."); return data; })
+      .then((data) => { if (!active) return; setOrder(data.order || null); if (data.settings) setSettings({ whatsapp: String(data.settings.whatsapp || ""), businessName: String(data.settings.businessName || "KHORA") }); setError(""); })
+      .catch((cause) => { if (active) { setOrder(null); setError(cause instanceof Error ? cause.message : "No pudimos encontrar este pedido."); } });
+    return () => { active = false; };
+  }, [initialOrderNumber, order, view]);
 
   useEffect(() => {
     if (!expiresAt) {
@@ -88,7 +102,7 @@ export default function StorePage() {
     if (nextView === "confirmation" && orderNumber) params.set("pedido", orderNumber);
     const suffix = params.toString() ? `?${params}` : "";
     window.history.pushState({}, "", `/tienda${suffix}`);
-    setView(nextView); setSelectedProductId(productId); window.scrollTo({ top: 0, behavior: "smooth" });
+    setView(nextView); setSelectedProductId(productId); if (nextView === "confirmation") setInitialOrderNumber(orderNumber || ""); setWhatsappError(""); window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function saveCart(next: CartLine[]) { setCart(next); try { localStorage.setItem("khora-store-cart", JSON.stringify(next)); } catch { /* optional persistence */ } }
@@ -142,12 +156,18 @@ export default function StorePage() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "No se pudo generar el pedido."); } finally { setSaving(false); }
   }
 
-  function whatsappUrl() {
-    if (!order) return "";
-    const lines = order.items.map((item) => `• ${item.quantity} × ${item.name} — ${money(item.lineTotalCents)}`).join("\n");
-    const message = `Hola, soy ${order.customer.name}.\n\nQuiero continuar con el pedido ${order.number}.\n${lines}\n\nTotal: ${money(order.totalCents)}\n\nQuisiera coordinar el pago y la entrega.`;
-    return settings.whatsapp ? `https://wa.me/${settings.whatsapp}?text=${encodeURIComponent(message)}` : "";
+  function whatsappUrl() { return order && settings.whatsapp ? buildWhatsAppLink(settings.whatsapp, buildStoreOrderWhatsAppMessage(order)) : ""; }
+  function orderIsClosed() { if (!order) return true; const state = order.status.toUpperCase(); return state === "CANCELLED" || state === "EXPIRED" || (state === "PENDING_PAYMENT" && Boolean(order.expiresAt) && new Date(order.expiresAt).getTime() <= Date.now()); }
+  function openWhatsApp() {
+    setWhatsappError("");
+    if (!order) { setWhatsappError("No pudimos encontrar este pedido."); return; }
+    if (orderIsClosed()) { setWhatsappError(order.status.toUpperCase() === "CANCELLED" ? "Este pedido ya fue cancelado y no está activo." : "Este pedido venció. Volvé a generar uno para verificar stock y precios actuales."); return; }
+    const url = whatsappUrl();
+    if (!url) { setWhatsappError("WhatsApp todavía no está configurado para este negocio."); return; }
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    if (!opened) setWhatsappError("No pudimos abrir WhatsApp. Revisá el bloqueo de ventanas y volvé a intentarlo.");
   }
+  async function copyOrderNumber() { if (!order) return; try { await navigator.clipboard.writeText(order.number); setCopiedOrder(true); window.setTimeout(() => setCopiedOrder(false), 1800); } catch { setWhatsappError("No pudimos copiar el número de pedido."); } }
   return <div className={styles.storeShell}>
     <header className={styles.header}><a className={styles.logo} href="/tienda" onClick={(event) => { event.preventDefault(); navigate("home"); }}><img src="/brand/khora-logo-horizontal.svg" alt="KHORA" /></a><nav aria-label="Navegación de la tienda"><button onClick={() => navigate("home")}>Inicio</button><button onClick={() => { navigate("home"); setTimeout(() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" }), 20); }}>Colecciones</button><button onClick={() => { navigate("home"); setTimeout(() => document.getElementById("historia")?.scrollIntoView({ behavior: "smooth" }), 20); }}>Nosotros</button></nav><div className={styles.headerActions}><label className={styles.search}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); if (view !== "home") navigate("home"); }} placeholder="Buscar" aria-label="Buscar productos" /></label><button className={styles.textAction} onClick={() => navigate("cart")}>Bolsa {cartCount ? `(${cartCount})` : ""}</button></div></header>
     {notice && <div className={styles.notice} role="status">{notice}<button onClick={() => setNotice("")} aria-label="Cerrar aviso">×</button></div>}
@@ -157,7 +177,7 @@ export default function StorePage() {
     {view === "product" && selectedProduct && <ProductDetail product={selectedProduct} onBack={() => navigate("home")} onAdd={(quantity) => addToCart(selectedProduct, quantity)} />}
     {view === "cart" && <CartView cart={cart} total={cartTotal} expiresAt={expiresAt} expired={reservationExpired} saving={saving} onBack={() => navigate("home")} onChange={changeQuantity} onRemove={(item) => syncReservation(cart.filter((line) => line.id !== item.id))} onContinue={continueToDetails} />}
     {view === "details" && <CustomerForm customer={customer} setCustomer={setCustomer} cart={cart} total={cartTotal} saving={saving} onBack={() => navigate("cart")} onSubmit={createOrder} />}
-    {view === "confirmation" && order && <Confirmation order={order} configured={Boolean(settings.whatsapp)} onWhatsApp={() => { const url = whatsappUrl(); if (url) window.open(url, "_blank", "noopener,noreferrer"); else setError("WhatsApp todavía no está configurado para este negocio."); }} onBack={() => navigate("home")} />}
+    {view === "confirmation" && order && <Confirmation order={order} configured={Boolean(settings.whatsapp)} whatsappError={whatsappError} copiedOrder={copiedOrder} onCopyOrder={copyOrderNumber} onWhatsApp={openWhatsApp} onBack={() => navigate("home")} />}
   </div>;
 }
 
@@ -187,8 +207,13 @@ function CustomerForm({ customer, setCustomer, cart, total, saving, onBack, onSu
   return <main className={styles.narrowPage}><button className={styles.backLink} onClick={onBack}>← Volver a la bolsa</button><div className={styles.pageTitle}><p className={styles.eyebrow}>ÚLTIMO PASO</p><h1>Tus datos</h1><p>Solo necesitamos lo esencial para preparar tu pedido.</p></div><form className={styles.customerLayout} onSubmit={onSubmit}><div className={styles.formCard}><label>Nombre y apellido *<input required value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} autoComplete="name" /></label><label>Teléfono / WhatsApp *<input required type="tel" inputMode="tel" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} autoComplete="tel" /></label><label>Correo electrónico <input type="email" value={customer.email} onChange={(event) => setCustomer({ ...customer, email: event.target.value })} autoComplete="email" /></label><label>Localidad / zona <input value={customer.location} onChange={(event) => setCustomer({ ...customer, location: event.target.value })} autoComplete="address-level2" /></label><p className={styles.formHint}>Al generar el pedido, tus productos quedan reservados por 24 horas mientras coordinamos el pago y la entrega.</p><button className={`${styles.primary} ${styles.fullButton}`} disabled={saving}>{saving ? "Generando pedido…" : "Generar pedido"} <span>→</span></button></div><aside className={styles.summaryCard}><h2>Resumen</h2>{cart.map((item) => <div key={item.id}><span>{item.quantity} × {item.name}</span><strong>{money(item.quantity * item.priceCents)}</strong></div>)}<div className={styles.summaryTotal}><span>Total</span><strong>{money(total)}</strong></div></aside></form></main>;
 }
 
-function Confirmation({ order, configured, onWhatsApp, onBack }: { order: StoreOrder; configured: boolean; onWhatsApp: () => void; onBack: () => void }) {
-  return <main className={styles.confirmation}><div className={styles.confirmMark}>✓</div><p className={styles.eyebrow}>KHORA TIENDA</p><h1>Pedido generado</h1><p className={styles.confirmLead}>Tu pedido <strong>{order.number}</strong> fue generado correctamente.</p><div className={styles.confirmCard}><div><span>Pedido</span><strong>{order.number}</strong></div><div><span>Total</span><strong>{money(order.totalCents)}</strong></div><div><span>Reserva</span><strong>24 horas</strong></div></div><p className={styles.confirmCopy}>Tus productos quedaron reservados mientras coordinamos el pago y la entrega.</p><button className={`${styles.primary} ${styles.whatsappButton}`} onClick={onWhatsApp}>Continuar por WhatsApp <span>→</span></button>{!configured && <p className={styles.configHint}>El pedido ya existe. WhatsApp todavía no está configurado; podés coordinarlo desde KHORA Administración.</p>}<button className={styles.linkButton} onClick={onBack}>Volver a la tienda</button></main>;
+function Confirmation({ order, configured, whatsappError, copiedOrder, onCopyOrder, onWhatsApp, onBack }: { order: StoreOrder; configured: boolean; whatsappError: string; copiedOrder: boolean; onCopyOrder: () => void; onWhatsApp: () => void; onBack: () => void }) {
+  const state = order.status.toUpperCase();
+  const cancelled = state === "CANCELLED";
+  const expired = state === "EXPIRED" || (state === "PENDING_PAYMENT" && Boolean(order.expiresAt) && new Date(order.expiresAt).getTime() <= Date.now());
+  const closed = cancelled || expired;
+  const reservationLabel = state === "PAID" || state === "PENDING_DELIVERY" || state === "DELIVERED" ? "Pago confirmado" : closed ? "Reserva cerrada" : "24 horas";
+  return <main className={styles.confirmation}><div className={styles.confirmMark}>{closed ? "!" : "✓"}</div><p className={styles.eyebrow}>KHORA TIENDA</p><h1>{closed ? (cancelled ? "Pedido cancelado" : "Pedido vencido") : "Pedido generado"}</h1><p className={styles.confirmLead}>{closed ? (cancelled ? <>El pedido <strong>{order.number}</strong> ya no está activo.</> : <>El pedido <strong>{order.number}</strong> venció y ya no conserva la reserva.</>) : <>Tu pedido <strong>{order.number}</strong> fue generado correctamente.</>}</p><div className={styles.confirmCard}><div><span>Pedido</span><strong>{order.number}</strong><button className={styles.copyOrder} onClick={onCopyOrder}>{copiedOrder ? "Copiado" : `Copiar ${order.number}`}</button></div><div><span>Total</span><strong>{money(order.totalCents)}</strong></div><div><span>{state === "PAID" ? "Estado" : "Reserva"}</span><strong>{reservationLabel}</strong></div></div>{closed ? <p className={styles.confirmCopy}>{cancelled ? "No vuelvas a abrir WhatsApp con este pedido. Si necesitás comprar, generá un pedido nuevo." : "Volvé a generar uno para verificar stock y precios actuales."}</p> : <p className={styles.confirmCopy}>Tus productos quedaron reservados mientras coordinamos el pago y la entrega.</p>}{!closed && <button className={`${styles.primary} ${styles.whatsappButton}`} onClick={onWhatsApp}>Continuar por WhatsApp <span>→</span></button>}{whatsappError && <p className={styles.whatsappError} role="alert">{whatsappError}</p>}{!configured && !closed && <p className={styles.configHint}>El pedido ya existe. WhatsApp todavía no está configurado; podés coordinarlo desde KHORA Administración.</p>}<button className={styles.linkButton} onClick={onBack}>Volver a la tienda</button></main>;
 }
 
 function Footer() { return <footer className={styles.footer}><div><img src="/brand/khora-logo-horizontal.svg" alt="KHORA" /><p>Objetos para habitar despacio.</p></div><div><span>KHORA Tienda</span><a href="#catalogo">Colecciones</a><a href="#historia">Nosotros</a><a href="mailto:hola@khora.com">Contacto</a></div><small>© {new Date().getFullYear()} KHORA</small></footer>; }

@@ -1,4 +1,5 @@
 import { comboDefinitions, customerPurchases, customers, materials, orders, priceLists, products, recipeDefinitions, type Tone } from "./khora-data";
+export { buildWhatsAppLink } from "./khora-whatsapp";
 
 const DAY_MS = 86_400_000;
 const DEMO_TODAY = new Date("2026-08-14T12:00:00-03:00");
@@ -148,9 +149,4 @@ export function buildWhatsAppMessage(template: WhatsAppTemplate, customerName: s
     recovery: `Hola ${firstName} 👋\nHace un tiempo que no sabemos de vos y queríamos saludarte.\n\nCuando necesites renovar tus aromas o preparar un regalo, estamos para ayudarte.\n\nKHORA`,
   };
   return messages[template];
-}
-
-export function buildWhatsAppLink(phone: string, message: string) {
-  const normalized = phone.replace(/\D/g, "");
-  return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
 }

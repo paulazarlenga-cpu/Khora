@@ -1,5 +1,6 @@
 import { khoraDb, withKhoraTransaction, type KhoraTransaction } from "@/db/postgres";
 import { isValidClientPhone, normalizeClientEmail, normalizeClientPhone } from "../../khora-client";
+import { normalizeWhatsAppNumber } from "../../khora-whatsapp";
 
 type Row = Record<string, unknown>;
 type CartItemInput = { productId: number; quantity: number };
@@ -133,7 +134,7 @@ async function getSettings() {
   let whatsapp = configured;
   try { whatsapp = asString(JSON.parse(configured)); } catch { /* plain text setting */ }
   whatsapp ||= asString(profile.whatsapp ?? profile.phone ?? process.env.NEXT_PUBLIC_KHORA_WHATSAPP);
-  return { whatsapp: whatsapp.replace(/\D/g, ""), businessName: asString(profile.name) || "KHORA" };
+  return { whatsapp: normalizeWhatsAppNumber(whatsapp), businessName: asString(profile.name) || "KHORA" };
 }
 
 async function reservationByToken(token: string) {
@@ -199,11 +200,15 @@ async function releaseCart(tokenInput: unknown) {
   });
 }
 async function orderByNumber(number: string) {
-  const order = await db().prepare(`SELECT o.id,o.number,o.created_at,o.expected_at,o.total_cents,o.status,o.payment_status,c.name client_name,c.phone client_phone,c.email client_email,c.address client_address
+  const order = await db().prepare(`SELECT o.id,o.number,o.created_at,o.expected_at,o.total_cents,o.status,o.payment_status,o.store_status,o.store_customer_snapshot,c.name client_name,c.phone client_phone,c.email client_email,c.address client_address
     FROM orders o LEFT JOIN clients c ON c.id=o.client_id WHERE o.number=? AND o.store_source='STORE'`).bind(number).first<Row>();
   if (!order) return null;
+  let snapshot: Record<string, unknown> = {};
+  if (order.store_customer_snapshot && typeof order.store_customer_snapshot === "object") snapshot = order.store_customer_snapshot as Record<string, unknown>;
+  else if (order.store_customer_snapshot) { try { snapshot = JSON.parse(asString(order.store_customer_snapshot)) as Record<string, unknown>; } catch { snapshot = {}; } }
   const items = (await db().prepare("SELECT product_id,description,quantity,unit_price_cents,line_total_cents FROM order_items WHERE order_id=? ORDER BY id").bind(asNumber(order.id)).all<Row>()).results;
-  return { number: asString(order.number), createdAt: asString(order.created_at), expiresAt: asString(order.expected_at), totalCents: asNumber(order.total_cents), status: asString(order.status), paymentStatus: asString(order.payment_status), customer: { name: asString(order.client_name), phone: asString(order.client_phone), email: asString(order.client_email), location: asString(order.client_address) }, items: items.map((item) => ({ productId: asNumber(item.product_id), name: asString(item.description), quantity: asNumber(item.quantity), priceCents: asNumber(item.unit_price_cents), lineTotalCents: asNumber(item.line_total_cents) })) };
+  const customerSnapshot = { name: asString(snapshot.name) || asString(order.client_name), phone: asString(snapshot.phone) || asString(order.client_phone), email: asString(snapshot.email) || asString(order.client_email), location: asString(snapshot.location) || asString(order.client_address) };
+  return { number: asString(order.number), createdAt: asString(order.created_at), expiresAt: asString(order.expected_at), totalCents: asNumber(order.total_cents), status: asString(order.store_status) || asString(order.status), paymentStatus: asString(order.payment_status), customer: customerSnapshot, items: items.map((item) => ({ productId: asNumber(item.product_id), name: asString(item.description), quantity: asNumber(item.quantity), priceCents: asNumber(item.unit_price_cents), lineTotalCents: asNumber(item.line_total_cents) })) };
 }
 
 async function resolveStoreClient(tx: KhoraTransaction, details: { name: string; phone: string; normalizedPhone: string; email: string; location: string }) {
