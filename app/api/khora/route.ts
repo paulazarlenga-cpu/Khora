@@ -4,6 +4,7 @@ import { categoryPrefix, convertUnit, normalizePrefix, normalizeUnit, suggestMat
 import { allocateFinishedStockFIFO, type FinishedLot } from "../../khora-fifo";
 import { buildKhoraPdf, type KhoraStructuredPdfInput } from "../../khora-pdf";
 import { calculateFinanceTotals } from "../../khora-finance-core";
+import { isValidClientPhone, normalizeClientEmail, normalizeClientPhone } from "../../khora-client";
 import { createWithGeneratedCode, createWithSequentialCode, nextSequentialCode, type SequentialCodeKind } from "../../khora-codes";
 type Body=Record<string,unknown>;
 type NRow=Record<string,number|string|null|boolean|undefined> & { current_stock?: number|string|null; material?: number|string|null; material_id?: number|string|null; current_cost_cents?: number|string|null; available?: number|string|null; unit?: string|null; required?: number; subtotal_cents?: number|null; raw_material_id?: number|string|null; material_active?: boolean; cost_available?: boolean };
@@ -240,6 +241,15 @@ let orderSchemaPromise: Promise<void> | null = null;
 function ensureOrderSchema() {
   if (!orderSchemaPromise) {
     orderSchemaPromise = db().batch([
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS store_phone_normalized TEXT"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone_normalized TEXT"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'MANUAL'"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS possible_duplicate BOOLEAN NOT NULL DEFAULT FALSE"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS duplicate_note TEXT"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+      db().prepare("UPDATE clients SET phone_normalized=COALESCE(NULLIF(phone_normalized,''),NULLIF(store_phone_normalized,''),NULLIF(regexp_replace(COALESCE(phone,''), '\\D', '','g'),'')) WHERE phone_normalized IS NULL OR phone_normalized=''"),
+      db().prepare("CREATE INDEX IF NOT EXISTS clients_phone_normalized_idx ON clients(phone_normalized)"),
+      db().prepare("CREATE INDEX IF NOT EXISTS clients_email_normalized_idx ON clients(LOWER(TRIM(email))) WHERE email IS NOT NULL"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_status TEXT"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_paid_at TIMESTAMPTZ"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_paid_by TEXT"),
@@ -247,7 +257,8 @@ function ensureOrderSchema() {
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_delivered_by TEXT"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_expired_at TIMESTAMPTZ"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_cancel_reason TEXT"),
-      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_customer_snapshot JSONB"),      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_reservation_id BIGINT"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_customer_snapshot JSONB"),
+      db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_reservation_id BIGINT"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_stock_committed_at TIMESTAMPTZ"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_source TEXT NOT NULL DEFAULT 'ADMIN'"),
       db().prepare("CREATE TABLE IF NOT EXISTS store_reservations (id BIGSERIAL PRIMARY KEY, token TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','COMMITTED','EXPIRED','RELEASED')), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
@@ -414,7 +425,18 @@ async function markStoreDelivered(orderId: number, actorEmail: string) {
   });
 }
 const views:Record<string,string>={
- clients:`SELECT c.id,c.name,c.phone,c.email,c.address,c.active,c.price_list_id,pl.name price_list,COUNT(DISTINCT CASE WHEN s.status<>'CANCELLED' THEN s.id END) sales_count,COALESCE(SUM(CASE WHEN s.status<>'CANCELLED' THEN s.total_cents ELSE 0 END),0) total_spent_cents,COALESCE(ROUND(AVG(CASE WHEN s.status<>'CANCELLED' THEN s.total_cents END)),0) average_ticket_cents,MAX(CASE WHEN s.status<>'CANCELLED' THEN s.sold_at END) last_purchase,CASE WHEN MAX(CASE WHEN s.status<>'CANCELLED' THEN s.sold_at END) IS NULL THEN NULL ELSE CURRENT_DATE-CAST(MAX(CASE WHEN s.status<>'CANCELLED' THEN s.sold_at END) AS DATE) END days_without_buying FROM clients c LEFT JOIN price_lists pl ON pl.id=c.price_list_id LEFT JOIN sales s ON s.client_id=c.id GROUP BY c.id,pl.name ORDER BY c.active DESC,c.name`,
+ clients:`SELECT c.id,c.code,c.name,c.phone,c.phone_normalized,c.email,c.address,c.origin,c.possible_duplicate,c.duplicate_note,c.active,c.created_at,c.updated_at,c.price_list_id,pl.name price_list,
+    (SELECT COUNT(*) FROM sales s WHERE s.client_id=c.id AND s.status='PAID' AND s.payment_status='PAID') purchases_count,
+    (SELECT COUNT(*) FROM sales s WHERE s.client_id=c.id AND s.status='PAID' AND s.payment_status='PAID') sales_count,
+    (SELECT COALESCE(SUM(s.total_cents),0) FROM sales s WHERE s.client_id=c.id AND s.status='PAID' AND s.payment_status='PAID') total_spent_cents,
+    (SELECT COALESCE(ROUND(AVG(s.total_cents)),0) FROM sales s WHERE s.client_id=c.id AND s.status='PAID' AND s.payment_status='PAID') average_ticket_cents,
+    (SELECT MAX(s.sold_at) FROM sales s WHERE s.client_id=c.id AND s.status='PAID' AND s.payment_status='PAID') last_purchase,
+    (SELECT COUNT(*) FROM orders o WHERE o.client_id=c.id) orders_count,
+    (SELECT COUNT(*) FROM orders o WHERE o.client_id=c.id AND COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END)='PENDING_PAYMENT') pending_orders_count,
+    (SELECT COUNT(*) FROM orders o WHERE o.client_id=c.id AND COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END)='CANCELLED') cancelled_orders_count,
+    (SELECT COUNT(*) FROM orders o WHERE o.client_id=c.id AND COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END)='EXPIRED') expired_orders_count,
+    CASE WHEN (SELECT MAX(s.sold_at) FROM sales s WHERE s.client_id=c.id AND s.status='PAID' AND s.payment_status='PAID') IS NULL THEN NULL ELSE CURRENT_DATE-CAST((SELECT MAX(s.sold_at) FROM sales s WHERE s.client_id=c.id AND s.status='PAID' AND s.payment_status='PAID') AS DATE) END days_without_buying
+    FROM clients c LEFT JOIN price_lists pl ON pl.id=c.price_list_id ORDER BY c.active DESC,c.name`,
  price_lists:`SELECT pl.id,pl.code,pl.name,pl.price_modifier,pl.is_default,pl.active,COUNT(DISTINCT c.id) clients_count,COUNT(DISTINCT pli.id) custom_prices,COALESCE((SELECT json_agg(json_build_object('id',assigned.id,'name',assigned.name,'active',assigned.active) ORDER BY assigned.name) FROM clients assigned WHERE assigned.price_list_id=pl.id),'[]'::json) assigned_clients FROM price_lists pl LEFT JOIN clients c ON c.price_list_id=pl.id LEFT JOIN price_list_items pli ON pli.price_list_id=pl.id GROUP BY pl.id ORDER BY pl.is_default DESC,pl.name`,
  product_profitability:`SELECT p.id,cb.code,cb.name,p.sale_price_cents,CASE WHEN p.last_batch_unit_cost_cents>0 THEN p.last_batch_unit_cost_cents ELSE p.estimated_cost_cents END current_cost_cents,p.sale_price_cents-(CASE WHEN p.last_batch_unit_cost_cents>0 THEN p.last_batch_unit_cost_cents ELSE p.estimated_cost_cents END) unit_profit_cents,CASE WHEN (CASE WHEN p.last_batch_unit_cost_cents>0 THEN p.last_batch_unit_cost_cents ELSE p.estimated_cost_cents END)>0 THEN ROUND(((p.sale_price_cents-(CASE WHEN p.last_batch_unit_cost_cents>0 THEN p.last_batch_unit_cost_cents ELSE p.estimated_cost_cents END))*100.0/(CASE WHEN p.last_batch_unit_cost_cents>0 THEN p.last_batch_unit_cost_cents ELSE p.estimated_cost_cents END))::numeric,1)::double precision ELSE 0 END gross_margin_percent,COALESCE(SUM(CASE WHEN s.status<>'CANCELLED' THEN si.quantity ELSE 0 END),0) units_sold,COALESCE(SUM(CASE WHEN s.status<>'CANCELLED' THEN si.line_total_cents ELSE 0 END),0) accumulated_sales_cents,COALESCE(SUM(CASE WHEN s.status<>'CANCELLED' THEN si.line_total_cents-si.line_cost_cents ELSE 0 END),0) generated_profit_cents FROM products p JOIN code_base cb ON cb.id=p.code_base_id LEFT JOIN sale_items si ON si.product_id=p.id LEFT JOIN sales s ON s.id=si.sale_id GROUP BY p.id,cb.code,cb.name ORDER BY generated_profit_cents DESC`,
  suppliers:`SELECT id,name,phone,email,address,active FROM suppliers ORDER BY active DESC,name`,
@@ -454,7 +476,7 @@ export async function GET(request:Request){try{
   await ensurePreviousFinanceClosure("cron@khora");
   return ok({ok:true,month:previousMonthKey()});
   }
-  const user=await getKhoraUser();if(!user)return fail("No autorizado",401); if(entity==="order_definition"){
+  const user=await getKhoraUser();if(!user)return fail("No autorizado",401); await ensureOrderSchema(); if(entity==="order_definition"){
   await expireStoreOrders(user.email??"sistema");
   const id=n(url.searchParams.get("id"));if(!id)return fail("Pedido inválido");
   const definition=await orderDefinition(id);if(!definition)return fail("Pedido inexistente",404);return ok(definition);
@@ -479,21 +501,24 @@ export async function GET(request:Request){try{
       FROM mixtures m ORDER BY m.active DESC,m.name`).all()).results;
     return ok({rows});
   }
-  if(entity==="manufacturing"){
-   const rows=(await db().prepare(`SELECT * FROM ( SELECT mb.id,mb.manufactured_at::text occurred_at,mb.manufactured_at::text manufactured_at,mb.batch_number,p.id product_id,NULL::integer combo_id,NULL::integer mixture_id,NULL::integer preparation_id,cb.code,cb.name product,mb.quantity,COALESCE(mb.initial_quantity,mb.quantity) initial_quantity,COALESCE(mb.available_quantity,0) available_quantity,mb.unit_cost_cents,mb.total_cost_cents,mb.notes,COALESCE(mb.status,'ACTIVE') status,mb.cancelled_at::text cancelled_at,mb.operation_key,NULL::text batch_unit,NULL::double precision batch_yield_quantity,'PRODUCT' batch_kind FROM manufacturing_batches mb JOIN products p ON p.id=mb.product_id JOIN code_base cb ON cb.id=p.code_base_id UNION ALL SELECT cbatch.id,cbatch.assembled_at::text occurred_at,cbatch.assembled_at::text manufactured_at,cbatch.batch_number,p.id product_id,cbatch.combo_id,NULL::integer mixture_id,NULL::integer preparation_id,cb.code,cb.name product,cbatch.quantity,COALESCE(cbatch.initial_quantity,cbatch.quantity) initial_quantity,COALESCE(cbatch.available_quantity,0) available_quantity,cbatch.unit_cost_cents,cbatch.total_cost_cents,cbatch.notes,COALESCE(cbatch.status,'ACTIVE') status,cbatch.cancelled_at::text cancelled_at,cbatch.operation_key,NULL::text batch_unit,NULL::double precision batch_yield_quantity,'COMBO' batch_kind FROM combo_batches cbatch JOIN combos c ON c.id=cbatch.combo_id JOIN products p ON p.id=c.product_id JOIN code_base cb ON cb.id=p.code_base_id UNION ALL SELECT ml.id,ml.prepared_at::text occurred_at,ml.prepared_at::text manufactured_at,ml.lot_number batch_number,NULL::integer product_id,NULL::integer combo_id,m.id mixture_id,ml.preparation_id,m.code,m.name product,ml.initial_quantity quantity,ml.initial_quantity initial_quantity,COALESCE(ml.available_quantity,0) available_quantity,ml.unit_cost_cents,ml.total_cost_cents,ml.notes,COALESCE(ml.status,'ACTIVE') status,ml.cancelled_at::text cancelled_at,mp.operation_key,m.unit batch_unit,m.yield_quantity batch_yield_quantity,'MIXTURE' batch_kind FROM mixture_lots ml JOIN mixtures m ON m.id=ml.mixture_id JOIN mixture_preparations mp ON mp.id=ml.preparation_id ) batches ORDER BY occurred_at DESC,id DESC`).all()).results;
-  return ok({rows});
- }
- if(entity==="client_history"){
-  const id=n(url.searchParams.get("id"));if(!id)return fail("Cliente inválido");
-  const rows=(await db().prepare(`SELECT s.id,s.sold_at,s.total_cents,
-    COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.sale_id=s.id AND p.direction='IN' AND p.status='CONFIRMED'),CASE WHEN s.payment_status='PAID' THEN s.total_cents ELSE 0 END) paid_cents,
-    GREATEST(0,s.total_cents-COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.sale_id=s.id AND p.direction='IN' AND p.status='CONFIRMED'),CASE WHEN s.payment_status='PAID' THEN s.total_cents ELSE 0 END)) pending_cents,
-    s.payment_status,s.status,s.origin,COUNT(DISTINCT si.id) item_count
-    FROM sales s LEFT JOIN sale_items si ON si.sale_id=s.id WHERE s.client_id=?
-    GROUP BY s.id ORDER BY s.sold_at DESC,s.id DESC LIMIT 100`).bind(id).all()).results;
-  return ok({rows});
- }
- if(entity==="supplier_history"){
+  if(entity==="client_history"){
+   const id=n(url.searchParams.get("id"));if(!id)return fail("Cliente inválido");
+   const rows=(await db().prepare(`SELECT * FROM (
+     SELECT 'SALE' record_type,s.id,s.sold_at event_at,s.sold_at,s.total_cents,
+       COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.sale_id=s.id AND p.direction='IN' AND p.status='CONFIRMED'),CASE WHEN s.payment_status='PAID' THEN s.total_cents ELSE 0 END) paid_cents,
+       GREATEST(0,s.total_cents-COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.sale_id=s.id AND p.direction='IN' AND p.status='CONFIRMED'),CASE WHEN s.payment_status='PAID' THEN s.total_cents ELSE 0 END)) pending_cents,
+       s.payment_status,s.status,s.origin,COUNT(DISTINCT si.id) item_count,o.id order_id,o.number order_number,s.id sale_id
+       FROM sales s LEFT JOIN sale_items si ON si.sale_id=s.id LEFT JOIN orders o ON o.sale_id=s.id WHERE s.client_id=? GROUP BY s.id,o.id,o.number
+     UNION ALL
+     SELECT 'ORDER' record_type,o.id,o.created_at event_at,o.created_at,o.total_cents,
+       COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.order_id=o.id AND p.direction='IN' AND p.status='CONFIRMED'),CASE WHEN o.payment_status='PAID' THEN o.total_cents ELSE 0 END) paid_cents,
+       GREATEST(0,o.total_cents-COALESCE((SELECT SUM(p.amount_cents) FROM payments p WHERE p.order_id=o.id AND p.direction='IN' AND p.status='CONFIRMED'),CASE WHEN o.payment_status='PAID' THEN o.total_cents ELSE 0 END)) pending_cents,
+       o.payment_status,COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END) status,COALESCE(o.store_source,'ADMIN') origin,
+       (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id=o.id) item_count,o.id order_id,o.number order_number,NULL::integer sale_id
+       FROM orders o WHERE o.client_id=?
+   ) history ORDER BY event_at DESC,id DESC LIMIT 200`).bind(id,id).all()).results;
+   return ok({rows});
+  }if(entity==="supplier_history"){
   const id=n(url.searchParams.get("id"));if(!id)return fail("Proveedor inválido");
   const [purchases,orders,expenses]=await db().batch([
    db().prepare(`SELECT p.id,p.supplier_id,p.purchased_at,c.name category,cb.code,cb.name material,
@@ -794,6 +819,7 @@ const manufacturingLotAction=async(action:ManufacturingLotAction,b:Body,actorEma
 };
 
 export async function POST(request:Request){try{const user=await getKhoraUser();if(!user)return fail("No autorizado",401);const b=await request.json() as Body,action=s(b.action),actorEmail=user.email??"sistema";
+   await ensureOrderSchema();
    if(action==="update_mixture_preparation"){
     const id=n(b.id),quantity=n(b.quantity);if(!id||!Number.isFinite(quantity)||quantity<=0)throw new Error("Preparación o cantidad inválida");
     const prep=await db().prepare("SELECT mp.id,mp.mixture_id,mp.status,mp.actual_quantity old_quantity,ml.id lot_id,ml.initial_quantity,ml.available_quantity,ml.prepared_at,ml.lot_number FROM mixture_preparations mp JOIN mixture_lots ml ON ml.preparation_id=mp.id WHERE mp.id=?").bind(id).first<NRow>();
@@ -901,8 +927,25 @@ export async function POST(request:Request){try{const user=await getKhoraUser();
   const month=required(b.month,"El período");monthBounds(month);const close=await db().prepare("SELECT id,status FROM monthly_finance_closures WHERE month=?").bind(month).first<NRow>();if(!close||close.status!=="CLOSED")throw new Error("El período no tiene un cierre activo");await db().batch([db().prepare("UPDATE monthly_finance_closures SET status='REOPENED',reopened_at=CURRENT_TIMESTAMP,reopened_by=? WHERE month=?").bind(actorEmail,month),db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary) VALUES('REOPEN','FINANCE_MONTH',?,?,?)").bind(close.id,actorEmail,`Período ${month} reabierto`)]);return ok({ok:true,summary:await financeSummary(month)});
  }
  if(action==="save_product_image"){const productId=n(b.productId),path=required(b.path,"La ruta de la imagen");if(!productId||!path.startsWith(`products/${productId}/`))throw new Error("La ruta de la imagen no es válida");const product=await db().prepare("SELECT id FROM products WHERE id=?").bind(productId).first<NRow>();if(!product)throw new Error("Producto inexistente");await db().prepare("INSERT INTO app_settings(key,value_json,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP").bind(`product_image_${productId}`,path).run();return ok({ok:true,path})}
- if(action==="save_contact"){const table=b.kind==="supplier"?"suppliers":"clients",name=required(b.name,"El nombre");if(table==="clients"){const priceListId=b.priceListId?n(b.priceListId):null;if(b.id)await db().prepare("UPDATE clients SET name=?,phone=?,email=?,address=?,price_list_id=?,active=? WHERE id=?").bind(name,s(b.phone)||null,s(b.email)||null,s(b.address)||null,priceListId,b.active===false?0:1,n(b.id)).run();else await db().prepare("INSERT INTO clients(code,name,phone,email,address,price_list_id) VALUES(?,?,?,?,?,COALESCE(?,(SELECT id FROM price_lists WHERE is_default=1 LIMIT 1)))").bind(code("CLI"),name,s(b.phone)||null,s(b.email)||null,s(b.address)||null,priceListId).run()}else if(b.id)await db().prepare("UPDATE suppliers SET name=?,phone=?,email=?,address=?,active=? WHERE id=?").bind(name,s(b.phone)||null,s(b.email)||null,s(b.address)||null,b.active===false?0:1,n(b.id)).run();else await db().prepare("INSERT INTO suppliers(code,name,phone,email,address) VALUES(?,?,?,?,?)").bind(code("PRO"),name,s(b.phone)||null,s(b.email)||null,s(b.address)||null).run();return ok()}
- if(action==="save_price_list"){const name=required(b.name,"El nombre"),visible=required(b.code,"El código").toUpperCase(),modifier=n(b.priceModifier);if(modifier<=0||modifier>3)throw new Error("El modificador debe ser mayor que 0 y menor o igual que 3");if(b.id)await db().prepare("UPDATE price_lists SET code=?,name=?,price_modifier=?,active=? WHERE id=?").bind(visible,name,modifier,b.active===false?0:1,n(b.id)).run();else await db().prepare("INSERT INTO price_lists(code,name,price_modifier,is_default) VALUES(?,?,?,0)").bind(visible,name,modifier).run();return ok()}
+  if(action==="save_contact"){
+   const table=b.kind==="supplier"?"suppliers":"clients",name=required(b.name,"El nombre");
+   if(table==="clients"){
+    await ensureOrderSchema();
+    const id=b.id?n(b.id):0,phone=s(b.phone),normalizedPhone=normalizeClientPhone(phone),email=s(b.email),normalizedEmail=normalizeClientEmail(email),address=s(b.address)||null,priceListId=b.priceListId?n(b.priceListId):null,active=b.active===false?0:1;
+    if(phone&&!isValidClientPhone(phone))throw new Error("Ingresá un teléfono válido.");
+    const existing=id?await db().prepare("SELECT id,possible_duplicate,duplicate_note FROM clients WHERE id=?").bind(id).first<NRow>():null;
+    if(id&&!existing)throw new Error("El cliente no existe");
+    const phoneConflict=normalizedPhone?await db().prepare("SELECT id,name FROM clients WHERE id<>? AND COALESCE(NULLIF(phone_normalized,''),NULLIF(store_phone_normalized,''),NULLIF(phone,''))=? ORDER BY active DESC,id LIMIT 1").bind(id,normalizedPhone).first<NRow>():null;
+    const emailConflict=normalizedEmail?await db().prepare("SELECT id,name FROM clients WHERE id<>? AND LOWER(TRIM(email))=LOWER(TRIM(?)) ORDER BY active DESC,id LIMIT 1").bind(id,normalizedEmail).first<NRow>():null;
+    const conflict=phoneConflict||emailConflict;
+    if(conflict&&b.allowDuplicate!==true)return Response.json({error:phoneConflict?"Ese teléfono ya está asociado a otro cliente.":"Este correo ya está asociado a otro cliente.",code:phoneConflict?"CLIENT_DUPLICATE_PHONE":"CLIENT_DUPLICATE_EMAIL",field:phoneConflict?"phone":"email",contactId:n(conflict.id)},{status:409});
+    const marked=Boolean(conflict)||Boolean(existing?.possible_duplicate);
+    const note=conflict?(phoneConflict?"El teléfono coincide con otro cliente; revisar posible duplicado.":"El correo coincide con otro cliente; revisar posible duplicado."):s(existing?.duplicate_note)||null;
+    if(id)await db().prepare("UPDATE clients SET name=?,phone=?,phone_normalized=?,store_phone_normalized=?,email=?,address=?,price_list_id=?,active=?,origin=COALESCE(NULLIF(origin,''),'MANUAL'),possible_duplicate=?,duplicate_note=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,phone||null,normalizedPhone||null,normalizedPhone||null,normalizedEmail||null,address,priceListId,active,marked,note,id).run();
+    else await db().prepare("INSERT INTO clients(code,name,phone,phone_normalized,email,address,origin,possible_duplicate,duplicate_note,price_list_id,active) VALUES(?,?,?,?,?,?, 'MANUAL',?,?,COALESCE(?,(SELECT id FROM price_lists WHERE is_default=1 LIMIT 1)),?)").bind(code("CLI"),name,phone||null,normalizedPhone||null,normalizedEmail||null,address,marked,note,priceListId,active).run();
+    return ok({ok:true,possibleDuplicate:marked});
+   }else if(b.id)await db().prepare("UPDATE suppliers SET name=?,phone=?,email=?,address=?,active=? WHERE id=?").bind(name,s(b.phone)||null,s(b.email)||null,s(b.address)||null,b.active===false?0:1,n(b.id)).run();else await db().prepare("INSERT INTO suppliers(code,name,phone,email,address) VALUES(?,?,?,?,?)").bind(code("PRO"),name,s(b.phone)||null,s(b.email)||null,s(b.address)||null).run();return ok()
+  } if(action==="save_price_list"){const name=required(b.name,"El nombre"),visible=required(b.code,"El código").toUpperCase(),modifier=n(b.priceModifier);if(modifier<=0||modifier>3)throw new Error("El modificador debe ser mayor que 0 y menor o igual que 3");if(b.id)await db().prepare("UPDATE price_lists SET code=?,name=?,price_modifier=?,active=? WHERE id=?").bind(visible,name,modifier,b.active===false?0:1,n(b.id)).run();else await db().prepare("INSERT INTO price_lists(code,name,price_modifier,is_default) VALUES(?,?,?,0)").bind(visible,name,modifier).run();return ok()}
  if(action==="save_price_list_item"){const listId=n(b.priceListId),productId=n(b.productId),price=Math.round(n(b.priceCents));if(!listId||!productId||price<0)throw new Error("Revisá la lista, el producto y el precio");await db().prepare("INSERT INTO price_list_items(price_list_id,product_id,price_cents) VALUES(?,?,?) ON CONFLICT(price_list_id,product_id) DO UPDATE SET price_cents=excluded.price_cents").bind(listId,productId,price).run();return ok()}
  if(action==="delete_contact"){
   const table=b.kind==="supplier"?"suppliers":"clients",id=n(b.id);if(!id)throw new Error("Contacto inválido");

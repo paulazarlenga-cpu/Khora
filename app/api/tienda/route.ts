@@ -1,4 +1,5 @@
-import { khoraDb, withKhoraTransaction } from "@/db/postgres";
+import { khoraDb, withKhoraTransaction, type KhoraTransaction } from "@/db/postgres";
+import { isValidClientPhone, normalizeClientEmail, normalizeClientPhone } from "../../khora-client";
 
 type Row = Record<string, unknown>;
 type CartItemInput = { productId: number; quantity: number };
@@ -30,6 +31,12 @@ function ensureStoreSchema() {
     schemaPromise = db().batch([
       db().prepare("ALTER TABLE products ADD COLUMN IF NOT EXISTS store_published BOOLEAN NOT NULL DEFAULT TRUE"),
       db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS store_phone_normalized TEXT"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone_normalized TEXT"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'MANUAL'"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS possible_duplicate BOOLEAN NOT NULL DEFAULT FALSE"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS duplicate_note TEXT"),
+      db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP"),
+      db().prepare("UPDATE clients SET phone_normalized=COALESCE(NULLIF(phone_normalized,''),NULLIF(store_phone_normalized,''),NULLIF(regexp_replace(COALESCE(phone,''), '\\\\D', '','g'),'')) WHERE phone_normalized IS NULL OR phone_normalized=''"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_source TEXT NOT NULL DEFAULT 'ADMIN'"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_idempotency_key TEXT"),
       db().prepare("ALTER TABLE orders ADD COLUMN IF NOT EXISTS store_reservation_id BIGINT"),
@@ -55,17 +62,13 @@ function ensureStoreSchema() {
       db().prepare("CREATE INDEX IF NOT EXISTS store_reservations_active_idx ON store_reservations(status,expires_at)"),
       db().prepare("CREATE INDEX IF NOT EXISTS store_reservation_items_product_idx ON store_reservation_items(product_id)"),
       db().prepare("CREATE INDEX IF NOT EXISTS clients_store_phone_idx ON clients(store_phone_normalized)"),
+      db().prepare("CREATE INDEX IF NOT EXISTS clients_phone_normalized_idx ON clients(phone_normalized)"),
+      db().prepare("CREATE INDEX IF NOT EXISTS clients_email_normalized_idx ON clients(LOWER(TRIM(email))) WHERE email IS NOT NULL"),
     ]).then(() => undefined).catch((cause) => { schemaPromise = null; throw cause; });
   }
   return schemaPromise;
 }
 
-const normalizePhone = (value: unknown) => {
-  let digits = asString(value).replace(/\D/g, "");
-  if (digits.startsWith("549")) digits = digits.slice(3);
-  else if (digits.startsWith("54")) digits = digits.slice(2).replace(/^9/, "");
-  return digits;
-};
 
 const parseImagePath = (value: unknown) => {
   if (!value) return null;
@@ -203,6 +206,45 @@ async function orderByNumber(number: string) {
   return { number: asString(order.number), createdAt: asString(order.created_at), expiresAt: asString(order.expected_at), totalCents: asNumber(order.total_cents), status: asString(order.status), paymentStatus: asString(order.payment_status), customer: { name: asString(order.client_name), phone: asString(order.client_phone), email: asString(order.client_email), location: asString(order.client_address) }, items: items.map((item) => ({ productId: asNumber(item.product_id), name: asString(item.description), quantity: asNumber(item.quantity), priceCents: asNumber(item.unit_price_cents), lineTotalCents: asNumber(item.line_total_cents) })) };
 }
 
+async function resolveStoreClient(tx: KhoraTransaction, details: { name: string; phone: string; normalizedPhone: string; email: string; location: string }) {
+  const { name, phone, normalizedPhone, email, location } = details;
+  const normalizedEmail = normalizeClientEmail(email);
+  const lockKeys = [`phone:${normalizedPhone}`, ...(normalizedEmail ? [`email:${normalizedEmail}`] : [])];
+  for (const key of lockKeys) {
+    await tx.prepare("SELECT pg_advisory_xact_lock(hashtextextended('khora-client:' || ?, 0))").bind(key).run();
+  }
+  const phoneMatch = await tx.prepare(`SELECT id,name,phone,email,address,origin,active,possible_duplicate,duplicate_note
+    FROM clients
+    WHERE COALESCE(NULLIF(phone_normalized,''),NULLIF(store_phone_normalized,''),NULLIF(phone,''))=?
+    ORDER BY active DESC,id LIMIT 1`).bind(normalizedPhone).first<Row>();
+  const emailMatch = normalizedEmail
+    ? await tx.prepare(`SELECT id,name,phone,email,address,origin,active,possible_duplicate,duplicate_note
+        FROM clients WHERE LOWER(TRIM(email))=LOWER(TRIM(?)) ORDER BY active DESC,id LIMIT 1`).bind(normalizedEmail).first<Row>()
+    : null;
+  if (phoneMatch) {
+    const clientId = asNumber(phoneMatch.id);
+    const emailConflict = Boolean(emailMatch && asNumber(emailMatch.id) !== clientId);
+    const duplicateNote = emailConflict
+      ? "El correo ingresado desde KHORA Tienda ya pertenece a otro cliente. Revisar posible duplicado."
+      : asString(phoneMatch.duplicate_note) || null;
+    await tx.prepare(`UPDATE clients SET active=TRUE,
+      name=CASE WHEN NULLIF(TRIM(name),'') IS NULL THEN ? ELSE name END,
+      phone=CASE WHEN NULLIF(TRIM(phone),'') IS NULL THEN ? ELSE phone END,
+      phone_normalized=?,store_phone_normalized=?,
+      email=CASE WHEN NULLIF(TRIM(email),'') IS NULL AND ? IS NOT NULL THEN ? ELSE email END,
+      address=CASE WHEN NULLIF(TRIM(address),'') IS NULL AND ? IS NOT NULL THEN ? ELSE address END,
+      possible_duplicate=CASE WHEN ? THEN TRUE ELSE possible_duplicate END,
+      duplicate_note=CASE WHEN ? THEN ? ELSE duplicate_note END,
+      origin=COALESCE(NULLIF(origin,''),'MANUAL'),updated_at=CURRENT_TIMESTAMP WHERE id=?`)
+      .bind(name, phone, normalizedPhone, normalizedPhone, normalizedEmail || null, normalizedEmail || null, location || null, location || null, emailConflict, emailConflict, duplicateNote, clientId).run();
+    return { clientId, possibleExistingClient: emailConflict };
+  }
+  const created = await tx.prepare(`INSERT INTO clients(code,name,phone,phone_normalized,email,address,store_phone_normalized,origin,possible_duplicate,duplicate_note)
+    VALUES(?,?,?,?,?,?,?,?,?,?) RETURNING id`)
+    .bind(code("CLI"), name, phone, normalizedPhone, normalizedEmail || null, location || null, normalizedPhone, "STORE", Boolean(emailMatch), emailMatch ? "El correo ingresado desde KHORA Tienda ya está asociado a otro cliente; revisar posible duplicado." : null)
+    .first<Row>();
+  return { clientId: asNumber(created?.id), possibleExistingClient: Boolean(emailMatch) };
+}
 async function createStoreOrder(body: Record<string, unknown>) {
   await ensureStoreSchema();
   const token = asString(body.token);
@@ -210,12 +252,12 @@ async function createStoreOrder(body: Record<string, unknown>) {
   const customer = (body.customer ?? {}) as Record<string, unknown>;
   const name = asString(customer.name);
   const phone = asString(customer.phone);
-  const normalizedPhone = normalizePhone(phone);
+  const normalizedPhone = normalizeClientPhone(phone);
   const email = asString(customer.email);
   const location = asString(customer.location);
   if (!idempotencyKey) throw new Error("No se pudo validar el pedido. Intentá nuevamente.");
   if (!name) throw new Error("Ingresá tu nombre y apellido.");
-  if (!normalizedPhone || normalizedPhone.length < 8) throw new Error("Ingresá un teléfono válido.");
+  if (!isValidClientPhone(phone)) throw new Error("Ingresá un teléfono válido.");
   try {
     const result = await withKhoraTransaction(async (tx) => {
       const existing = await tx.prepare("SELECT number FROM orders WHERE store_idempotency_key=? AND store_source='STORE'").bind(idempotencyKey).first<Row>();
@@ -251,15 +293,8 @@ async function createStoreOrder(body: Record<string, unknown>) {
         const product = byId.get(asNumber(item.product_id));
         if (!product || asNumber(item.quantity) > asNumber(product.available_stock) + 0.000001) throw new Error(`Solo quedan ${asNumber(product?.available_stock ?? 0)} unidades disponibles de ${asString(item.name)}.`);
       }
-      const existingClients = (await tx.prepare("SELECT id,name,phone,email,address,store_phone_normalized FROM clients WHERE active=1 ORDER BY id").all<Row>()).results;
-      const phoneMatch = existingClients.find((client) => normalizePhone(client.store_phone_normalized ?? client.phone) === normalizedPhone);
-      const emailMatch = !phoneMatch && email ? existingClients.find((client) => asString(client.email).toLowerCase() === email.toLowerCase()) : null;
-      let clientId = asNumber(phoneMatch?.id || emailMatch?.id);
-      if (clientId) await tx.prepare("UPDATE clients SET name=?,phone=?,email=?,address=?,store_phone_normalized=? WHERE id=?").bind(name, phone, email || null, location || null, normalizedPhone, clientId).run();
-      else {
-        const created = await tx.prepare("INSERT INTO clients(code,name,phone,email,address,store_phone_normalized) VALUES(?,?,?,?,?,?) RETURNING id").bind(code("CLI"), name, phone, email || null, location || null, normalizedPhone).first<Row>();
-        clientId = asNumber(created?.id);
-      }
+      const client = await resolveStoreClient(tx, { name, phone, normalizedPhone, email, location });
+      const clientId = client.clientId;
       if (!clientId) throw new Error("No se pudo preparar el cliente.");
       const numberRow = await tx.prepare("SELECT 'KH-' || LPAD(nextval('store_order_number_seq')::text,6,'0') number").first<Row>();
       const number = asString(numberRow?.number);
@@ -274,7 +309,7 @@ async function createStoreOrder(body: Record<string, unknown>) {
         tx.prepare("UPDATE store_reservations SET status='COMMITTED',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='ACTIVE'").bind(asNumber(reservation.id)),
         tx.prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','ORDER',?,'KHORA Tienda',?,?)").bind(orderId, `Pedido ${number} generado desde KHORA Tienda`, JSON.stringify({ source: "STORE", customerId: clientId, reservedUntil: asString(reservation.expires_at), committedUntilHours: 24, itemSnapshot: snapshotItems })),
       ]);
-      return { number, possibleExistingClient: Boolean(emailMatch) };
+      return { number, possibleExistingClient: client.possibleExistingClient };
     });
     if ("duplicateNumber" in result) return { order: await orderByNumber(asString(result.duplicateNumber)), duplicate: true, settings: await getSettings() };
     if ("priceChanged" in result && result.priceChanged) return { priceChanged: true, changes: result.changes, products: await listStoreProducts(token) };
