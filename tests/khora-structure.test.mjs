@@ -10,14 +10,14 @@ test("incluye todas las áreas principales del negocio", async () => {
     read("app/khora-data.ts"),
     read("app/khora-sections.tsx"),
   ]);
-  for (const area of ["inicio", "ventas", "clientes", "productos", "fabricacion", "stock", "compras", "proveedores", "finanzas", "calendario"]) {
+  for (const area of ["inicio", "ventas", "pedidos", "clientes", "productos", "fabricacion", "stock", "compras", "proveedores", "finanzas", "calendario"]) {
     assert.match(data, new RegExp(`id: "${area}"`));
   }
-  for (const screen of ["Dashboard", "Sales", "Customers", "Products", "Manufacturing", "Stock", "Purchases", "Suppliers", "Finance", "CalendarPage"]) {
+  for (const screen of ["Dashboard", "Sales", "Orders", "Customers", "Products", "Manufacturing", "Stock", "Purchases", "Suppliers", "Finance", "CalendarPage"]) {
     assert.match(sections, new RegExp(`function ${screen}\\b`));
   }
-  assert.doesNotMatch(data, /\{ id: "pedidos", label:/);
-  assert.doesNotMatch(sections, /function Orders\b/);
+  assert.match(data, /\{ id: "pedidos", label:/);
+  assert.match(sections, /function Orders\b/);
 });
 
 test("el modelo cubre pedidos, pagos, envíos, remitos y auditoría", async () => {
@@ -634,7 +634,7 @@ test("KHORA centraliza el lenguaje iconográfico de todos los módulos", async (
   }
   assert.match(icons, /stroke="currentColor"/);
   assert.match(icons, /strokeWidth="1\.8"/);
-  assert.doesNotMatch(data, /icon: moduleIcons\.pedidos/);
+  assert.match(data, /icon: moduleIcons\.pedidos/);
   assert.match(operations, /icon: moduleIcons\.proveedores/);
   assert.match(calendar, /icon: moduleIcons\.fabricacion/);
   assert.match(calendar, /icon: moduleIcons\.compras/);
