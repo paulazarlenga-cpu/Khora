@@ -227,8 +227,6 @@ function Orders({ search, onNavigate }: { search: string; onNavigate?: (section:
   const [editing, setEditing] = useState<AdminOrderDefinition | null>(null);
   const [notice, setNotice] = useState("");
   const [clock, setClock] = useState(() => Date.now());
-  useEffect(() => setQuery(search), [search]);
-  useEffect(() => { const target = search.trim().toLocaleLowerCase("es"); if (!target || !orderData.rows.length) return; const match = orderData.rows.find((row) => String(row.number ?? "").toLocaleLowerCase("es") === target); if (match) setSelectedId(Number(match.id)); }, [search, orderData.rows]);
   useEffect(() => { const id = window.setInterval(() => setClock(Date.now()), 60000); return () => window.clearInterval(id); }, []);
   const rows = orderData.rows.map((row) => ({ ...row, _state: adminOrderState(row) }));
   const counts = ADMIN_ORDER_TABS.reduce((acc, key) => { acc[key] = rows.filter((row) => adminOrderTab(String(row._state)) === key).length; return acc; }, {} as Record<OrderTab, number>);
@@ -252,7 +250,9 @@ function Orders({ search, onNavigate }: { search: string; onNavigate?: (section:
     if (!response.ok) throw new Error(result.error ?? "No se pudo actualizar el pedido");
     orderData.refresh(); dispatchKhoraRefresh(); setNotice("Pedido actualizado correctamente."); window.setTimeout(() => setNotice(""), 4000);
   }
-  const selected = selectedId ? orderData.rows.find((row) => Number(row.id) === selectedId) : null;
+  const searchedOrder = search.trim() ? orderData.rows.find((row) => String(row.number ?? "").toLocaleLowerCase("es") === search.trim().toLocaleLowerCase("es")) : null;
+  const selectedOrderId = selectedId === null ? (searchedOrder ? Number(searchedOrder.id) : null) : selectedId;
+  const selected = selectedOrderId === null ? null : orderData.rows.find((row) => Number(row.id) === selectedOrderId);
   return <div className="orders-page section-stack">
     {notice && <div className="inline-notice success"><span>✓</span>{notice}</div>}
     {orderData.error && <div className="inline-notice error"><span>!</span>{orderData.error}</div>}
@@ -263,7 +263,7 @@ function Orders({ search, onNavigate }: { search: string; onNavigate?: (section:
       <div className="admin-order-cards">{filtered.map((row) => { const state = String(row._state); const remaining = state === "PENDING_PAYMENT" ? orderRemaining(row.expected_at) : null; return <button className="admin-order-card" key={row.id} onClick={() => openOrder(row)}><div><strong>{row.number || `KH-${String(row.id).padStart(6, "0")}`}</strong><Badge tone={adminOrderTone(state)}>{adminOrderStateLabel(state)}</Badge></div><b>{String(row.client || "Cliente sin vincular")}</b><span>{orderDate(row.created_at)} · {money(Number(row.total_cents || 0) / 100)}</span>{remaining && <small className={remaining === "Vencido" ? "danger-text" : ""}>{remaining === "Vencido" ? remaining : `Vence en ${remaining}`}</small>}</button>; })}</div>
       {!orderData.loading && !filtered.length && <div className="recipe-empty">No hay pedidos en esta vista con los filtros actuales.</div>}
     </Panel>
-    {selected && <OrderDetailDrawer order={selected} onClose={() => setSelectedId(null)} onNavigate={onNavigate} onAction={(action) => setDialog({ action, order: selected })} onEdit={(definition) => setEditing(definition)} />}
+     {selected && <OrderDetailDrawer order={selected} onClose={() => setSelectedId(-1)} onNavigate={onNavigate} onAction={(action) => setDialog({ action, order: selected })} onEdit={(definition) => setEditing(definition)} />}
     {dialog && <OrderActionDialog action={dialog.action} order={dialog.order} onCancel={() => setDialog(null)} onConfirm={async (reason) => { try { await runAction(dialog.action, { id: dialog.order.id, reason }); setDialog(null); } catch (cause) { setNotice(cause instanceof Error ? cause.message : "No se pudo actualizar el pedido"); } }} />}
     {editing && <OrderEditDialog definition={editing} onCancel={() => setEditing(null)} onSaved={async () => { setEditing(null); await orderData.refresh(); dispatchKhoraRefresh(); setNotice("Pedido editado y reserva de stock recalculada."); }} />}
     <span aria-hidden="true" style={{ display: "none" }}>{clock}</span>
@@ -359,7 +359,6 @@ function Sales({ search, onNavigate }: { search: string; onNavigate?: (section: 
   const [deletingSale, setDeletingSale] = useState<SaleRecord | null>(null);
   const [notice, setNotice] = useState("");
   const [documentLinks, setDocumentLinks] = useState<Array<{ id: number; filename: string }>>([]);
-  useEffect(() => { setSaleQuery(search); }, [search]);
   const rows = sales.rows.filter((sale) => {
     const query = saleQuery.trim().toLocaleLowerCase("es");
     const searchableSaleId = `v-${sale.id}`;
@@ -696,7 +695,6 @@ function Customers({ search, onNavigate }: { search: string; onNavigate?: (secti
   const activeClients = clients.rows.filter((client) => Boolean(client.active));
   const [clientQuery, setClientQuery] = useState(search);
   const [classificationFilter, setClassificationFilter] = useState<ClientClassificationFilter>("all");
-  useEffect(() => { setClientQuery(search); }, [search]);
   const filtered = activeClients.filter((client) => {
     const query = clientQuery.trim().toLocaleLowerCase("es");
     const digits = clientQuery.replace(/\D/g, "");
@@ -767,19 +765,17 @@ function Products({ search, onCreateMaterial }: { search: string; onCreateMateri
   const [productNotice, setProductNotice] = useState("");
   const [photoUrls, setPhotoUrls] = useState<Record<number, string>>({});
   const [uploadingPhoto, setUploadingPhoto] = useState<number | null>(null);
-  const productSearchFromNavigation = search;
   const [productQuery, setProductQuery] = useState(search);
-  useEffect(() => { setProductQuery(productSearchFromNavigation); }, [productSearchFromNavigation]);
   useEffect(() => {
     const handleProductSearch = (event: Event) => setProductQuery((event as CustomEvent<string>).detail);
     window.addEventListener("khora:product-search", handleProductSearch);
     return () => window.removeEventListener("khora:product-search", handleProductSearch);
   }, []);
-  search = productQuery;
+  const effectiveSearch = productQuery;
   // The default product catalogue only shows active definitions. Archived/deleted
   // products remain available to historical sales and stock movements, but must
   // disappear from the operational cards immediately after the action succeeds.
-  const filtered = productData.rows.filter((product) => product.type !== "COMBO" && Boolean(product.active) && includesSearch(product, search));
+  const filtered = productData.rows.filter((product) => product.type !== "COMBO" && Boolean(product.active) && includesSearch(product, effectiveSearch));
   const active = productData.rows.filter((product) => product.type !== "COMBO" && Boolean(product.active));
   const lowStock = active.filter((product) => Number(product.current_stock) <= Number(product.minimum_stock));
   const stockValueCents = active.reduce((sum, product) => sum + Number(product.current_stock) * productCost(product), 0);
@@ -1036,7 +1032,6 @@ function Manufacturing({ search }: { search: string }) {
   const [cancelingMixtureLot, setCancelingMixtureLot] = useState<MixtureLotRow | null>(null);
   const [deletingMixtureLot, setDeletingMixtureLot] = useState<MixtureLotRow | null>(null);
   const [notice, setNotice] = useState("");
-  useEffect(() => { setBatchQuery(search); }, [search]);
   const manufacturable = productData.rows.filter((product) => product.active && ["MANUFACTURED", "COMBO"].includes(product.type));
   const plan = manufacturable.map((product) => ({ ...product, suggested: Math.max(0, Number(product.minimum_stock) - Number(product.current_stock)), kind: product.type === "COMBO" ? "Preparar combo" : "Fabricar" }));
   const actionable = plan.filter((item) => item.suggested > 0);
@@ -1530,7 +1525,6 @@ function Stock({ search }: { search: string }) {
   const [notice, setNotice] = useState("");
   const [stockQuery, setStockQuery] = useState(search);
   const [stockStatusFilter, setStockStatusFilter] = useState<"all" | "Disponible" | "Poco stock" | "Agotado">("all");
-  useEffect(() => { setStockQuery(search); }, [search]);
   const matchesStockStatus = (stock: number, minimum: number) => stockStatusFilter === "all" || materialStockStatus(stock, minimum).label === stockStatusFilter;
   const stockSearchPlaceholder = tab === "Productos terminados" ? "Buscar por producto o código…" : tab === "Materias primas" ? "Buscar por materia prima o código…" : "Buscar por mezcla o código…";
   const activeProducts = productData.rows.filter((item) => Boolean(item.active));
@@ -1718,7 +1712,7 @@ type MaterialApiRow = { id: number; code: string; material: string; unit: string
 function Purchases({ search, onCreate }: { search: string; onCreate?: (kind: string, section?: SectionId) => void }) {
   const purchaseData = useKhoraRows<PurchaseRow>("purchases");
   const materialData = useKhoraRows<MaterialApiRow>("materials");
-  const [tab, setTab] = useState("Necesidades de compra");
+  const [tab, setTab] = useState(search ? "Compras registradas" : "Necesidades de compra");
   const [showPurchaseForm, setShowPurchaseForm] = useState(false);
   const [editingPurchase, setEditingPurchase] = useState<PurchaseRow | null>(null);
   const [viewingPurchase, setViewingPurchase] = useState<PurchaseRow | null>(null);
@@ -1731,8 +1725,6 @@ function Purchases({ search, onCreate }: { search: string; onCreate?: (kind: str
   const [purchaseMaterialFilter, setPurchaseMaterialFilter] = useState("all");
   const [purchasePaymentFilter, setPurchasePaymentFilter] = useState("all");
   const needs = materialData.rows.filter((material) => material.active && Number(material.current_stock) <= Number(material.minimum_stock)).map((material) => ({ ...material, shortage: Math.max(0, Number(material.minimum_stock) - Number(material.current_stock)), suggested: Math.max(Number(material.minimum_stock) - Number(material.current_stock), Number(material.minimum_stock) > 0 ? Number(material.minimum_stock) * 0.25 : 1) }));
-  useEffect(() => { if (!search) return; const timeout = window.setTimeout(() => setTab("Compras registradas"), 0); return () => window.clearTimeout(timeout); }, [search]);
-  useEffect(() => { setPurchaseQuery(search); }, [search]);
   const rows = purchaseData.rows.filter((purchase) => {
     const query = purchaseQuery.trim().toLocaleLowerCase("es");
     const searchablePurchaseId = "c-" + purchase.id;
@@ -1891,7 +1883,6 @@ function Suppliers({ search, onCreate }: { search: string; onCreate?: (kind: str
   const [editing, setEditing] = useState<SupplierRow | null>(null);
   const [deleting, setDeleting] = useState<SupplierRow | null>(null);
   const [notice, setNotice] = useState("");
-  useEffect(() => { setQuery(search); }, [search]);
   function notify(message: string) { setNotice(message); window.setTimeout(() => setNotice(""), 4500); }
   const purchaseStats = (supplier: SupplierRow) => { const own = purchaseData.rows.filter((purchase) => Number(purchase.supplier_id) === supplier.id || String(purchase.supplier ?? "") === supplier.name); const total = own.reduce((sum, purchase) => sum + Number(purchase.total_cost_cents ?? 0), 0); const pending = own.filter((purchase) => String(purchase.payment_status ?? "") !== "PAID").reduce((sum, purchase) => sum + Number(purchase.total_cost_cents ?? 0), 0); const last = own.map((purchase) => String(purchase.purchased_at ?? "").slice(0, 10)).filter(Boolean).sort().reverse()[0]; return { count: own.length, total, pending, last }; };
   const effectiveQuery = query.trim();

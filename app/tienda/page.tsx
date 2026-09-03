@@ -52,6 +52,7 @@ export default function StorePage() {
   const [checkoutKey, setCheckoutKey] = useState("");
   const [catalogRefresh, setCatalogRefresh] = useState(0);
   const [customer, setCustomer] = useState({ name: "", phone: "", email: "", location: "" });
+  const [now, setNow] = useState(() => Date.now());
 
   const categories = useMemo(() => ["Todas", ...Array.from(new Set(products.map((product) => product.category).filter(Boolean)))], [products]);
   const filteredProducts = useMemo(() => products.filter((product) => (category === "Todas" || product.category === category) && `${product.name} ${product.category} ${product.description}`.toLowerCase().includes(query.toLowerCase().trim())), [products, category, query]);
@@ -99,6 +100,12 @@ export default function StorePage() {
     tick(); const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
   }, [expiresAt]);
+
+  useEffect(() => {
+    if (view !== "confirmation" || !order?.expiresAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [order?.expiresAt, view]);
 
   function navigate(nextView: View, productId?: number, orderNumber?: string, orderAccess?: string) {
     const params = new URLSearchParams();
@@ -184,7 +191,7 @@ export default function StorePage() {
     {view === "product" && !selectedProduct && !loading && <main className={styles.narrowPage}><div className={styles.emptyPanel}><h2>Este producto ya no está disponible</h2><p>Puede haber cambiado su disponibilidad o dejado de publicarse.</p><button className={styles.primary} onClick={() => navigate("home")}>Volver a la tienda <span>→</span></button></div></main>}
     {view === "cart" && <CartView cart={cart} total={cartTotal} expiresAt={expiresAt} expired={reservationExpired} saving={saving} onBack={() => navigate("home")} onChange={changeQuantity} onRemove={(item) => syncReservation(cart.filter((line) => line.id !== item.id))} onContinue={continueToDetails} />}
     {view === "details" && <CustomerForm customer={customer} setCustomer={setCustomer} cart={cart} total={cartTotal} saving={saving} onBack={() => navigate("cart")} onSubmit={createOrder} />}
-    {view === "confirmation" && order && <Confirmation order={order} configured={Boolean(settings.whatsapp)} whatsappError={whatsappError} copiedOrder={copiedOrder} onCopyOrder={copyOrderNumber} onWhatsApp={openWhatsApp} onBack={() => navigate("home")} />}
+     {view === "confirmation" && order && <Confirmation order={order} now={now} configured={Boolean(settings.whatsapp)} whatsappError={whatsappError} copiedOrder={copiedOrder} onCopyOrder={copyOrderNumber} onWhatsApp={openWhatsApp} onBack={() => navigate("home")} />}
     {view === "confirmation" && !order && !loading && <main className={styles.confirmation}><div className={styles.confirmMark}>!</div><p className={styles.eyebrow}>KHORA TIENDA</p><h1>No pudimos abrir este pedido</h1><p className={styles.confirmLead}>Revisá el enlace de confirmación. Si el pedido venció o fue cancelado, volvé a la tienda para generar uno nuevo.</p><button className={styles.primary} onClick={() => navigate("home")}>Volver a la tienda <span>→</span></button></main>}
   </div>;
 }
@@ -223,10 +230,10 @@ function CustomerForm({ customer, setCustomer, cart, total, saving, onBack, onSu
   return <main className={styles.narrowPage}><button className={styles.backLink} onClick={onBack}>← Volver a la bolsa</button><div className={styles.pageTitle}><p className={styles.eyebrow}>ÚLTIMO PASO</p><h1>Tus datos</h1><p>Solo necesitamos lo esencial para preparar tu pedido.</p></div><form className={styles.customerLayout} onSubmit={onSubmit}><div className={styles.formCard}><label>Nombre y apellido *<input required value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} autoComplete="name" /></label><label>Teléfono / WhatsApp *<input required type="tel" inputMode="tel" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} autoComplete="tel" /></label><label>Correo electrónico <input type="email" value={customer.email} onChange={(event) => setCustomer({ ...customer, email: event.target.value })} autoComplete="email" /></label><label>Localidad / zona <input value={customer.location} onChange={(event) => setCustomer({ ...customer, location: event.target.value })} autoComplete="address-level2" /></label><p className={styles.formHint}>Al generar el pedido, tus productos quedan reservados por 24 horas mientras coordinamos el pago y la entrega.</p><button className={`${styles.primary} ${styles.fullButton}`} disabled={saving}>{saving ? "Generando pedido…" : "Generar pedido"} <span>→</span></button></div><aside className={styles.summaryCard}><h2>Resumen</h2>{cart.map((item) => <div key={item.id}><span>{item.quantity} × {item.name}</span><strong>{money(item.quantity * item.priceCents)}</strong></div>)}<div className={styles.summaryTotal}><span>Total</span><strong>{money(total)}</strong></div></aside></form></main>;
 }
 
-function Confirmation({ order, configured, whatsappError, copiedOrder, onCopyOrder, onWhatsApp, onBack }: { order: StoreOrder; configured: boolean; whatsappError: string; copiedOrder: boolean; onCopyOrder: () => void; onWhatsApp: () => void; onBack: () => void }) {
+function Confirmation({ order, now, configured, whatsappError, copiedOrder, onCopyOrder, onWhatsApp, onBack }: { order: StoreOrder; now: number; configured: boolean; whatsappError: string; copiedOrder: boolean; onCopyOrder: () => void; onWhatsApp: () => void; onBack: () => void }) {
   const state = order.status.toUpperCase();
   const cancelled = state === "CANCELLED";
-  const expired = state === "EXPIRED" || (state === "PENDING_PAYMENT" && Boolean(order.expiresAt) && new Date(order.expiresAt).getTime() <= Date.now());
+  const expired = state === "EXPIRED" || (state === "PENDING_PAYMENT" && Boolean(order.expiresAt) && new Date(order.expiresAt).getTime() <= now);
   const closed = cancelled || expired;
   const reservationLabel = state === "PAID" || state === "PENDING_DELIVERY" || state === "DELIVERED" ? "Pago confirmado" : closed ? "Reserva cerrada" : "24 horas";
   return <main className={styles.confirmation}><div className={styles.confirmMark}>{closed ? "!" : "✓"}</div><p className={styles.eyebrow}>KHORA TIENDA</p><h1>{closed ? (cancelled ? "Pedido cancelado" : "Pedido vencido") : "Pedido generado"}</h1><p className={styles.confirmLead}>{closed ? (cancelled ? <>El pedido <strong>{order.number}</strong> ya no está activo.</> : <>El pedido <strong>{order.number}</strong> venció y ya no conserva la reserva.</>) : <>Tu pedido <strong>{order.number}</strong> fue generado correctamente.</>}</p><div className={styles.confirmCard}><div><span>Pedido</span><strong>{order.number}</strong><button className={styles.copyOrder} onClick={onCopyOrder}>{copiedOrder ? "Copiado" : `Copiar ${order.number}`}</button></div><div><span>Total</span><strong>{money(order.totalCents)}</strong></div><div><span>{state === "PAID" ? "Estado" : "Reserva"}</span><strong>{reservationLabel}</strong></div></div>{closed ? <p className={styles.confirmCopy}>{cancelled ? "No vuelvas a abrir WhatsApp con este pedido. Si necesitás comprar, generá un pedido nuevo." : "Volvé a generar uno para verificar stock y precios actuales."}</p> : <p className={styles.confirmCopy}>Tus productos quedaron reservados mientras coordinamos el pago y la entrega.</p>}{!closed && <button className={`${styles.primary} ${styles.whatsappButton}`} onClick={onWhatsApp}>Continuar por WhatsApp <span>→</span></button>}{whatsappError && <p className={styles.whatsappError} role="alert">{whatsappError}</p>}{!configured && !closed && <p className={styles.configHint}>El pedido ya existe. WhatsApp todavía no está configurado; podés coordinarlo desde KHORA Administración.</p>}<button className={styles.linkButton} onClick={onBack}>Volver a la tienda</button></main>;
