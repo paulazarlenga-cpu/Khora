@@ -99,4 +99,10 @@
   .filters{padding:12px 0;margin-bottom:28px}
   .cardVisual{aspect-ratio:1/0.9}
   .detailVisual{aspect-ratio:1/0.9}
+  .detailInfo{padding-top:20px}
+  .detailInfo h1{font-size:clamp(44px,5.2vw,70px)}
+  .detailPrice{margin:18px 0}
+  .detailDescription{font-size:16px;line-height:1.5}
+  .availability{margin:20px 0 18px}
+  .accordion{margin-top:18px}
 }
