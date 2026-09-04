@@ -464,6 +464,34 @@ const views:Record<string,string>={
  audit:`SELECT id,created_at,action,entity_type,entity_id,actor_email,summary FROM audit_logs ORDER BY id DESC LIMIT 250`
 };
 
+// Inicio consume estas fuentes juntas. Mantenerlas dentro de una única petición
+// evita repetir autenticación, vencimientos y conexiones a la base por cada tarjeta
+// del tablero o del centro de notificaciones.
+const dashboardSnapshot = async () => {
+ const result = await db().batch([
+  db().prepare("SELECT COALESCE(SUM(total_cents),0) value FROM sales WHERE status<>'CANCELLED'"),
+  db().prepare("SELECT COALESCE(SUM(amount_cents),0) value FROM expenses WHERE record_status<>'CANCELLED'"),
+  db().prepare(`WITH reserved AS (SELECT sri.product_id,SUM(sri.quantity) quantity FROM store_reservation_items sri JOIN store_reservations sr ON sr.id=sri.reservation_id WHERE sr.status='ACTIVE' AND sr.expires_at>CURRENT_TIMESTAMP GROUP BY sri.product_id), committed AS (SELECT oi.product_id,SUM(oi.quantity) quantity FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id IS NOT NULL AND o.store_source='STORE' AND o.store_stock_committed_at IS NOT NULL AND (COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END) IN ('PAID','PENDING_DELIVERY') OR (COALESCE(o.store_status,'PENDING_PAYMENT')='PENDING_PAYMENT' AND o.expected_at IS NOT NULL AND CAST(o.expected_at AS TIMESTAMPTZ)>CURRENT_TIMESTAMP)) GROUP BY oi.product_id) SELECT COUNT(*) value FROM (SELECT p.minimum_stock,GREATEST(0,p.current_stock-COALESCE(reserved.quantity,0)-COALESCE(committed.quantity,0)) available_stock FROM products p LEFT JOIN reserved ON reserved.product_id=p.id LEFT JOIN committed ON committed.product_id=p.id WHERE p.active=1) available WHERE available.available_stock<=available.minimum_stock`),
+  db().prepare("SELECT COUNT(*) value FROM raw_materials WHERE active=1 AND current_stock<=minimum_stock"),
+  db().prepare(views.clients), db().prepare(views.products), db().prepare(views.materials), db().prepare(views.manufacturing), db().prepare(views.suppliers), db().prepare(views.purchases),
+  db().prepare(`SELECT m.id,m.code,m.name,m.unit,m.yield_quantity,m.minimum_stock,m.active,m.notes,COALESCE((SELECT SUM(ml.available_quantity) FROM mixture_lots ml WHERE ml.mixture_id=m.id AND ml.status='ACTIVE'),0) current_stock,COALESCE((SELECT ROUND(SUM(ml.available_quantity*ml.unit_cost_cents)/NULLIF(SUM(ml.available_quantity),0)) FROM mixture_lots ml WHERE ml.mixture_id=m.id AND ml.status='ACTIVE' AND ml.available_quantity>0),(SELECT ROUND(SUM(mfi.quantity_per_yield*rm.current_cost_cents)::numeric/NULLIF(m.yield_quantity,0)) FROM mixture_formula_items mfi JOIN raw_materials rm ON rm.id=mfi.material_id WHERE mfi.mixture_id=m.id),0) estimated_cost_cents,(SELECT COUNT(*) FROM mixture_formula_items mfi WHERE mfi.mixture_id=m.id) formula_count FROM mixtures m ORDER BY m.active DESC,m.name`),
+  db().prepare(views.sales), db().prepare(views.product_profitability), db().prepare(views.profits),
+  db().prepare("SELECT COUNT(*) value FROM orders WHERE archived_at IS NULL AND (UPPER(COALESCE(store_status,'')) IN ('PENDING_PAYMENT','PAID','PENDING_DELIVERY') OR (store_status IS NULL AND UPPER(COALESCE(status,'')) NOT IN ('CANCELLED','DELIVERED')))") ,
+  db().prepare("SELECT value_json FROM app_settings WHERE key='dismissed_operational_alerts'")
+ ]);
+ const dismissed = result[15].results[0] as NRow | undefined;
+ let dismissedAlertIds: string[] = [];
+ try {
+  const ids = dismissed?.value_json ? JSON.parse(s(dismissed.value_json)) : [];
+  dismissedAlertIds = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
+ } catch { /* A bad persisted preference must not hide operational alerts. */ }
+ return {
+  summary: { sales: result[0].results[0]?.value ?? 0, expenses: result[1].results[0]?.value ?? 0, lowProducts: result[2].results[0]?.value ?? 0, lowMaterials: result[3].results[0]?.value ?? 0 },
+  clients: result[4].results, products: result[5].results, materials: result[6].results, batches: result[7].results, suppliers: result[8].results, purchases: result[9].results, mixtures: result[10].results,
+  sales: result[11].results, profitability: result[12].results, profits: result[13].results,
+  orderAttention: Number(result[14].results[0]?.value) || 0, dismissedAlertIds,
+ };
+};
 export async function GET(request:Request){try{
  const url=new URL(request.url),entity=url.searchParams.get("entity")||"summary";
  if(entity==="orders_auto_expire"){
@@ -477,7 +505,7 @@ export async function GET(request:Request){try{
   await ensurePreviousFinanceClosure("cron@khora");
   return ok({ok:true,month:previousMonthKey()});
   }
-   const user=await getKhoraUser();if(!user)return fail("No autorizado",401); await ensureOrderSchema(); await expireStoreOrders(user.email??"sistema"); if(entity==="order_definition"){
+   const user=await getKhoraUser();if(!user)return fail("No autorizado",401); await ensureOrderSchema(); await expireStoreOrders(user.email??"sistema"); if(entity==="dashboard_snapshot") return ok(await dashboardSnapshot()); if(entity==="order_definition"){
   const id=n(url.searchParams.get("id"));if(!id)return fail("Pedido inválido");
   const definition=await orderDefinition(id);if(!definition)return fail("Pedido inexistente",404);return ok(definition);
  }

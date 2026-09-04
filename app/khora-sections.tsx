@@ -13,9 +13,11 @@ import { KhoraIcon, moduleIcons, type KhoraIconName } from "./khora-icons";
 import { Button } from "./khora-button";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
-type Props = { section: SectionId; search: string; onNavigate: (section: SectionId, query?: string) => void; onCreate?: (kind: string, section?: SectionId) => void };
+type DashboardRow = Record<string, unknown>;
+export type DashboardSnapshot = { summary: DashboardRow; products: DashboardRow[]; materials: DashboardRow[]; sales: DashboardRow[]; clients: DashboardRow[]; purchases: DashboardRow[]; profitability: DashboardRow[]; profits: DashboardRow[] };
+type Props = { section: SectionId; search: string; onNavigate: (section: SectionId, query?: string) => void; onCreate?: (kind: string, section?: SectionId) => void; dashboardSnapshot: DashboardSnapshot; dashboardLoading: boolean; dashboardError: string; dashboardLoaded: boolean };
 
-export function SectionContent({ section, search, onNavigate, onCreate }: Props) {
+export function SectionContent({ section, search, onNavigate, onCreate, dashboardSnapshot, dashboardLoading, dashboardError, dashboardLoaded }: Props) {
   useEffect(() => {
     const selectNumberOnFocus = (event: Event) => {
       const target = event.target as HTMLInputElement;
@@ -24,7 +26,7 @@ export function SectionContent({ section, search, onNavigate, onCreate }: Props)
     document.addEventListener("focusin", selectNumberOnFocus);
     return () => document.removeEventListener("focusin", selectNumberOnFocus);
   }, []);
-  if (section === "inicio") return <Dashboard onNavigate={onNavigate} />;
+  if (section === "inicio") return <Dashboard onNavigate={onNavigate} data={dashboardSnapshot} loading={dashboardLoading} error={dashboardError} loaded={dashboardLoaded} />;
   if (section === "ventas") return <Sales search={search} onNavigate={onNavigate} />;
   if (section === "pedidos") return <Orders search={search} onNavigate={onNavigate} />;
   if (section === "clientes") return <Customers search={search} onNavigate={onNavigate} />;
@@ -37,21 +39,25 @@ export function SectionContent({ section, search, onNavigate, onCreate }: Props)
   return <Finance />;
 }
 
+const khoraRowsCache = new Map<string, Array<Record<string, unknown>>>();
+
 function useKhoraRows<T extends Record<string, unknown>>(entity: string) {
-  const [rows, setRows] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedRows = khoraRowsCache.get(entity) as T[] | undefined;
+  const [rows, setRows] = useState<T[]>(() => cachedRows ?? []);
+  const [loading, setLoading] = useState(() => !cachedRows);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   useEffect(() => {
+    if (revision === 0 && khoraRowsCache.has(entity)) return;
     let active = true;
     fetch(`/api/khora?entity=${entity}`)
       .then(async (response) => { const data = await response.json() as { rows?: T[]; error?: string }; if (!response.ok) throw new Error(data.error ?? "No se pudieron cargar los datos"); return data.rows ?? []; })
-      .then((data) => { if (active) { setRows(data); setError(""); } })
+      .then((data) => { if (active) { khoraRowsCache.set(entity, data); setRows(data); setError(""); } })
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "No se pudieron cargar los datos"); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [entity, revision]);
-  useEffect(() => { const refreshAll = () => { setLoading(true); setRevision((value) => value + 1); }; window.addEventListener("khora:data-changed", refreshAll); return () => window.removeEventListener("khora:data-changed", refreshAll); }, []);
+  useEffect(() => { const refreshAll = () => { khoraRowsCache.clear(); setLoading(true); setRevision((value) => value + 1); }; window.addEventListener("khora:data-changed", refreshAll); return () => window.removeEventListener("khora:data-changed", refreshAll); }, []);
   return { rows, loading, error, refresh: () => { setLoading(true); setRevision((value) => value + 1); } };
 }
 
@@ -80,31 +86,11 @@ function useKhoraObject<T>(url: string) {
   return { data, loading, error, refresh: () => { setLoading(true); setRevision((value) => value + 1); } };
 }
 
-function Dashboard({ onNavigate }: { onNavigate: (section: SectionId, query?: string) => void }) {
-  type Row = Record<string, unknown>;
+function Dashboard({ onNavigate, data, loading, error, loaded }: { onNavigate: (section: SectionId, query?: string) => void; data: DashboardSnapshot; loading: boolean; error: string; loaded: boolean }) {
   type ChartPeriod = 3 | 6 | 12;
-  type DashboardState = { summary: Row; products: Row[]; materials: Row[]; sales: Row[]; clients: Row[]; purchases: Row[]; profitability: Row[]; profits: Row[] };
-  const empty: DashboardState = { summary: {}, products: [], materials: [], sales: [], clients: [], purchases: [], profitability: [], profits: [] };
-  const [data, setData] = useState<DashboardState>(empty);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [revision, setRevision] = useState(0);
   const [chartPeriod, setChartPeriod] = useState<ChartPeriod>(6);
   const [periodMenuOpen, setPeriodMenuOpen] = useState(false);
-  useEffect(() => {
-    const refresh = () => { setLoading(true); setRevision((value) => value + 1); };
-    window.addEventListener("khora:data-changed", refresh);
-    return () => window.removeEventListener("khora:data-changed", refresh);
-  }, []);
-  useEffect(() => {
-    let active = true;
-    const get = async (entity: string) => { const response = await fetch(`/api/khora?entity=${entity}`); if (!response.ok) throw new Error("No se pudieron cargar los datos reales"); return response.json() as Promise<{ rows?: Row[]; [key: string]: unknown }>; };
-    Promise.all([get("summary"), get("products"), get("materials"), get("sales"), get("clients"), get("purchases"), get("product_profitability"), get("profits")])
-      .then(([summary, productRows, materialRows, saleRows, clientRows, purchaseRows, profitabilityRows, profitRows]) => { if (active) setData({ summary, products: productRows.rows ?? [], materials: materialRows.rows ?? [], sales: saleRows.rows ?? [], clients: clientRows.rows ?? [], purchases: purchaseRows.rows ?? [], profitability: profitabilityRows.rows ?? [], profits: profitRows.rows ?? [] }); })
-      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "No se pudieron cargar los datos reales"); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [revision]);
+  if (!loaded) return <div className="section-stack"><section className="operations-center" aria-labelledby="today-title"><header className="operations-header"><div><p>CENTRO DE OPERACIONES</p><h2 id="today-title">Hoy</h2><span>Datos operativos de KHORA</span></div><div className="operations-status"><i />{error ? "No pudimos actualizar" : "Cargando datos…"}</div></header><div className="priority-columns"><div><h3><i className="priority-dot attention" />Estado de la carga</h3><p className="empty-operation">{error ? "No pudimos obtener los datos actuales. Reintentá la actualización antes de tomar decisiones de stock." : "Cargando compras, ventas, stock y alertas reales…"}</p></div></div></section></div>;
   const number = (value: unknown) => Number(value) || 0;
   const pesos = (cents: unknown) => money(number(cents) / 100);
   const unpaidSales = data.sales.filter((row) => !["PAID", "CANCELLED"].includes(String(row.payment_status)));
@@ -131,7 +117,7 @@ function Dashboard({ onNavigate }: { onNavigate: (section: SectionId, query?: st
   return <div className="section-stack">
     {error && <div className="inline-notice error" role="alert"><span>!</span>{error}</div>}
     <section className="operations-center" aria-labelledby="today-title">
-      <header className="operations-header"><div><p>CENTRO DE OPERACIONES</p><h2 id="today-title">Hoy</h2><span>{today} · datos actualizados desde Supabase</span></div><div className="operations-status"><i />{loading ? "Actualizando…" : alerts.length ? `${alerts.length} asuntos para revisar` : "Todo al día"}</div></header>
+      <header className="operations-header"><div><p>CENTRO DE OPERACIONES</p><h2 id="today-title">Hoy</h2><span>{today} · datos actualizados desde Supabase</span></div><div className="operations-status"><i />{loading ? "Actualizando…" : error ? "No pudimos actualizar" : alerts.length ? `${alerts.length} asuntos para revisar` : "Todo al día"}</div></header>
       <div className="today-agenda">
         <button onClick={() => onNavigate("compras")}><span className="agenda-glyph info"><KhoraIcon name={moduleIcons.compras} /></span><span><strong>{monthPurchases.length} compras del mes</strong><small>{pesos(purchaseTotal)} entre pagadas y pendientes</small></span><i>→</i></button>
         <button onClick={() => onNavigate("ventas")}><span className="agenda-glyph success"><KhoraIcon name={moduleIcons.ventas} /></span><span><strong>{data.sales.length} ventas registradas</strong><small>{unpaidSales.length} con cobro pendiente</small></span><i>→</i></button>

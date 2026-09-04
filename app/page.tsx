@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { navigation, primaryNavigation, SectionId, type PrimaryNavigationItem } from "./khora-data";
 import { emptyOperationalData, getOperationalOverview, groupSearchResults, searchKhora, type GlobalSearchResult, type NavigationIntent, type OperationalData } from "./khora-operations";
-import { SectionContent } from "./khora-sections";
+import { SectionContent, type DashboardSnapshot } from "./khora-sections";
 import { KhoraIcon, moduleIcons, type KhoraIconName } from "./khora-icons";
 import { KhoraLogo } from "./khora-logo";
 import { Button } from "./khora-button";
@@ -17,6 +17,8 @@ const quickActions: Array<{ label: string; section: SectionId; kind: string; ico
   { label: "Nueva venta", section: "ventas", kind: "venta", icon: moduleIcons.ventas }, { label: "Fabricar producto", section: "fabricacion", kind: "fabricación", icon: moduleIcons.fabricacion }, { label: "Nueva compra", section: "compras", kind: "compra", icon: moduleIcons.compras }, { label: "Nuevo gasto", section: "finanzas", kind: "gasto", icon: moduleIcons.finanzas }, { label: "Nuevo cliente", section: "clientes", kind: "cliente", icon: moduleIcons.clientes }, { label: "Nuevo proveedor", section: "proveedores", kind: "proveedor", icon: moduleIcons.proveedores },
 ];
 
+type AdminDashboardSnapshot = DashboardSnapshot & { batches: Array<Record<string, unknown>>; suppliers: Array<Record<string, unknown>>; mixtures: Array<Record<string, unknown>>; orderAttention: number; dismissedAlertIds: string[] };
+const emptyDashboardSnapshot: AdminDashboardSnapshot = { summary: {}, products: [], materials: [], sales: [], clients: [], purchases: [], profitability: [], profits: [], batches: [], suppliers: [], mixtures: [], orderAttention: 0, dismissedAlertIds: [] };
 export default function Home() {
   const [section, setSection] = useState<SectionId>("inicio");
   const [mobileNav, setMobileNav] = useState(false);
@@ -36,6 +38,10 @@ export default function Home() {
   const [operationalData, setOperationalData] = useState<OperationalData>(emptyOperationalData);
   const [dismissedAlertIds, setDismissedAlertIds] = useState<string[]>([]);
   const [orderAttention, setOrderAttention] = useState(0);
+  const [dashboardSnapshot, setDashboardSnapshot] = useState<AdminDashboardSnapshot>(emptyDashboardSnapshot);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [dashboardLoaded, setDashboardLoaded] = useState(false);
+  const [dashboardError, setDashboardError] = useState("");
   const searchInput = useRef<HTMLInputElement>(null);
   const primaryNavRef = useRef<HTMLElement>(null);
   const current = useMemo(() => navigation.find((item) => item.id === section) ?? navigation[0], [section]);
@@ -51,33 +57,35 @@ export default function Home() {
   ] as const).filter(([, summary]) => summary.problemCount > 0);
   const stockAlertDescription = stockAlertLocations.length ? stockAlertLocations.map(([label, summary]) => `${label}: ${summary.problemCount}`).join(" · ") : "Sin alertas de stock";
   const productionAttention = stockSeverity !== "normal" || operationalOverview.agenda.some((item) => item.id === "manufacture" && item.count > 0);
+  const notificationBadge = !dashboardLoaded && dashboardLoading ? "…" : !dashboardLoaded && dashboardError ? "!" : operationalAlerts.length;
   useEffect(() => {
     let active = true;
-    fetch("/api/khora?entity=orders").then((response) => response.ok ? response.json() as Promise<{ rows?: Array<Record<string, unknown>> }> : Promise.reject(new Error())).then((data) => { if (active) setOrderAttention((data.rows ?? []).filter((row) => ["PENDING_PAYMENT", "PAID", "PENDING_DELIVERY"].includes(String(row.store_status ?? "").toUpperCase()) || (!row.store_status && !["CANCELLED", "DELIVERED"].includes(String(row.status ?? "").toUpperCase()))).length); }).catch(() => { if (active) setOrderAttention(0); });
+    fetch("/api/khora?entity=dashboard_snapshot")
+      .then(async (response) => { const data = await response.json() as Partial<AdminDashboardSnapshot> & { error?: string }; if (!response.ok) throw new Error(data.error ?? "No pudimos cargar los datos operativos."); return data; })
+      .then((data) => {
+        if (!active) return;
+        const rows = (value: unknown) => Array.isArray(value) ? value as Array<Record<string, unknown>> : [];
+        const snapshot: AdminDashboardSnapshot = {
+          summary: data.summary && typeof data.summary === "object" ? data.summary : {}, products: rows(data.products), materials: rows(data.materials), sales: rows(data.sales), clients: rows(data.clients), purchases: rows(data.purchases), profitability: rows(data.profitability), profits: rows(data.profits),
+          batches: rows(data.batches), suppliers: rows(data.suppliers), mixtures: rows(data.mixtures), orderAttention: Number(data.orderAttention) || 0, dismissedAlertIds: Array.isArray(data.dismissedAlertIds) ? data.dismissedAlertIds.filter((id): id is string => typeof id === "string") : [],
+        };
+        setDashboardSnapshot(snapshot);
+        setOperationalData({ clients: snapshot.clients, products: snapshot.products, materials: snapshot.materials, batches: snapshot.batches, suppliers: snapshot.suppliers, purchases: snapshot.purchases, mixtures: snapshot.mixtures });
+        setDismissedAlertIds(snapshot.dismissedAlertIds);
+        setOrderAttention(snapshot.orderAttention);
+        setDashboardLoaded(true);
+        setDashboardError("");
+      })
+      .catch(() => { if (active) setDashboardError("No pudimos actualizar los datos operativos. Las alertas muestran la última información disponible."); })
+      .finally(() => { if (active) setDashboardLoading(false); });
     return () => { active = false; };
   }, [recordRevision]);
 
   useEffect(() => {
-    let active = true;
-    const entities = ["clients", "products", "materials", "manufacturing", "suppliers", "purchases", "mixtures"] as const;
-    Promise.all(entities.map(async (entity) => {
-      const response = await fetch(`/api/khora?entity=${entity}`);
-      if (!response.ok) throw new Error();
-      const data = await response.json() as { rows?: Array<Record<string, unknown>> };
-      return data.rows ?? [];
-    })).then(([clients, products, materials, batches, suppliers, purchases, mixtures]) => {
-      if (active) setOperationalData({ clients, products, materials, batches, suppliers, purchases, mixtures });
-    }).catch(() => { if (active) setOperationalData(emptyOperationalData); });
-    return () => { active = false; };
-  }, [recordRevision]);
-
-  useEffect(() => {
-    const refreshOperationalData = () => setRecordRevision((value) => value + 1);
+    const refreshOperationalData = () => { setDashboardLoading(true); setRecordRevision((value) => value + 1); };
     window.addEventListener("khora:data-changed", refreshOperationalData);
     return () => window.removeEventListener("khora:data-changed", refreshOperationalData);
   }, []);
-
-  useEffect(() => { let active = true; fetch("/api/khora?entity=dismissed_alerts").then((response) => response.json()).then((data: { ids?: string[] }) => { if (active) setDismissedAlertIds(Array.isArray(data.ids) ? data.ids : []); }).catch(() => undefined); return () => { active = false; }; }, []);
 
   useEffect(() => {
     function onShortcut(event: KeyboardEvent) {
@@ -117,13 +125,13 @@ export default function Home() {
       try {
         const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "save_contact", kind: normalized.includes("proveedor") ? "supplier" : "client", name: form.get("name"), phone: form.get("phone"), email: form.get("email"), address: form.get("address"), priceListId: normalized.includes("cliente") && form.get("priceListId") ? Number(form.get("priceListId")) : undefined }) });
         const result = await response.json() as { error?: string }; if (!response.ok) throw new Error(result.error ?? "No se pudo guardar el contacto");
-        setCreateKind(null); setRecordRevision((value) => value + 1); setNotice(normalized.includes("proveedor") ? "Proveedor guardado correctamente." : "Cliente guardado correctamente.");
+        setCreateKind(null); setDashboardLoading(true); setRecordRevision((value) => value + 1); setNotice(normalized.includes("proveedor") ? "Proveedor guardado correctamente." : "Cliente guardado correctamente.");
       } catch (cause) { setNotice(cause instanceof Error ? cause.message : "No se pudo guardar el contacto"); }
     } else if (normalized.includes("gasto")) {
       try {
         const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "save_expense", concept: form.get("concept"), supplierId: form.get("supplierId") ? Number(form.get("supplierId")) : undefined, date: form.get("date"), quantity: Number(form.get("quantity")), amountCents: Math.round(Number(form.get("amountPesos")) * 100), paymentStatus: form.get("paymentStatus"), invoiceNumber: form.get("invoiceNumber"), notes: form.get("notes") }) });
         const result = await response.json() as { error?: string }; if (!response.ok) throw new Error(result.error ?? "No se pudo guardar el gasto");
-        setCreateKind(null); setRecordRevision((value) => value + 1); setNotice("Gasto guardado correctamente.");
+        setCreateKind(null); setDashboardLoading(true); setRecordRevision((value) => value + 1); setNotice("Gasto guardado correctamente.");
       } catch (cause) { setNotice(cause instanceof Error ? cause.message : "No se pudo guardar el gasto"); }
     } else {
       setNotice("Este formulario se completará en su módulo operativo correspondiente.");
@@ -146,13 +154,13 @@ export default function Home() {
     </aside>
     {mobileNav && <button className="sidebar-scrim" aria-label="Cerrar menú" onClick={() => setMobileNav(false)} />}
     <div className="main-column">
-      <header className="topbar"><button className="menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menú">☰</button><KhoraLogo variant="horizontal" size="sm" theme="green" decorative className="mobile-topbar-logo mobile-topbar-logo--tablet" /><KhoraLogo variant="icon" size="md" theme="green" decorative className="mobile-topbar-logo mobile-topbar-logo--mobile" /><label className="global-search"><span aria-hidden="true"><KhoraIcon name="search" /></span><input ref={searchInput} role="combobox" aria-autocomplete="list" value={globalQuery} onFocus={() => setSearchOpen(globalQuery.trim().length >= 2)} onChange={(event) => { setGlobalQuery(event.target.value); setSearchOpen(true); setSelectedSearchIndex(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); setSelectedSearchIndex((value) => Math.min(value + 1, searchResults.length - 1)); } if (event.key === "ArrowUp") { event.preventDefault(); setSelectedSearchIndex((value) => Math.max(value - 1, 0)); } if (event.key === "Enter" && searchResults[selectedSearchIndex]) { event.preventDefault(); openSearchResult(searchResults[selectedSearchIndex]); } }} placeholder="Buscar cliente, producto o lote…" aria-label="Búsqueda global" aria-expanded={searchOpen && globalQuery.trim().length >= 2} aria-controls="global-search-results" autoComplete="off" /><kbd>⌘ K</kbd></label><div className="topbar-actions"><button className="mobile-alert-button" aria-label="Notificaciones" onClick={() => setAlertsOpen((value) => !value)}><KhoraIcon name={moduleIcons.notificaciones} /><b>{operationalAlerts.length}</b></button><div className="quick-wrap"><button className="new-button" onClick={() => setQuickOpen((value) => !value)} aria-expanded={quickOpen} aria-haspopup="menu"><span>＋</span> Nuevo <i><KhoraIcon name="chevron-down" /></i></button>{quickOpen && <div className="quick-menu" role="menu" aria-label="Crear nuevo registro"><p>CREAR NUEVO</p>{quickActions.map((action) => <button role="menuitem" key={action.kind} onClick={() => openCreate(action.kind, action.section)}><i><KhoraIcon name={action.icon} /></i><span>{action.label}</span></button>)}</div>}</div></div></header>
+      <header className="topbar"><button className="menu-button" onClick={() => setMobileNav(true)} aria-label="Abrir menú">☰</button><KhoraLogo variant="horizontal" size="sm" theme="green" decorative className="mobile-topbar-logo mobile-topbar-logo--tablet" /><KhoraLogo variant="icon" size="md" theme="green" decorative className="mobile-topbar-logo mobile-topbar-logo--mobile" /><label className="global-search"><span aria-hidden="true"><KhoraIcon name="search" /></span><input ref={searchInput} role="combobox" aria-autocomplete="list" value={globalQuery} onFocus={() => setSearchOpen(globalQuery.trim().length >= 2)} onChange={(event) => { setGlobalQuery(event.target.value); setSearchOpen(true); setSelectedSearchIndex(0); }} onKeyDown={(event) => { if (event.key === "ArrowDown") { event.preventDefault(); setSelectedSearchIndex((value) => Math.min(value + 1, searchResults.length - 1)); } if (event.key === "ArrowUp") { event.preventDefault(); setSelectedSearchIndex((value) => Math.max(value - 1, 0)); } if (event.key === "Enter" && searchResults[selectedSearchIndex]) { event.preventDefault(); openSearchResult(searchResults[selectedSearchIndex]); } }} placeholder="Buscar cliente, producto o lote…" aria-label="Búsqueda global" aria-expanded={searchOpen && globalQuery.trim().length >= 2} aria-controls="global-search-results" autoComplete="off" /><kbd>⌘ K</kbd></label><div className="topbar-actions"><button className="mobile-alert-button" aria-label={dashboardError && !dashboardLoaded ? "Notificaciones sin actualizar" : "Notificaciones"} onClick={() => setAlertsOpen((value) => !value)}><KhoraIcon name={moduleIcons.notificaciones} /><b>{notificationBadge}</b></button><div className="quick-wrap"><button className="new-button" onClick={() => setQuickOpen((value) => !value)} aria-expanded={quickOpen} aria-haspopup="menu"><span>＋</span> Nuevo <i><KhoraIcon name="chevron-down" /></i></button>{quickOpen && <div className="quick-menu" role="menu" aria-label="Crear nuevo registro"><p>CREAR NUEVO</p>{quickActions.map((action) => <button role="menuitem" key={action.kind} onClick={() => openCreate(action.kind, action.section)}><i><KhoraIcon name={action.icon} /></i><span>{action.label}</span></button>)}</div>}</div></div></header>
       {searchOpen && globalQuery.trim().length >= 2 && <GlobalSearchPalette query={globalQuery} results={searchResults} selectedIndex={selectedSearchIndex} onSelect={openSearchResult} onClose={() => setSearchOpen(false)} />}
-      {alertsOpen && <NotificationCenter alerts={operationalAlerts} onNavigate={(destination) => goTo(destination.section, destination.query)} onDismiss={dismissAlert} onClose={() => setAlertsOpen(false)} />}
+      {alertsOpen && <NotificationCenter alerts={operationalAlerts} onNavigate={(destination) => goTo(destination.section, destination.query)} onDismiss={dismissAlert} onClose={() => setAlertsOpen(false)} error={dashboardError} loaded={dashboardLoaded} />}
       <main className="content"><div className="page-heading"><div><p className="breadcrumb">KHORA <span>/</span> {current.label}</p><h1>{section === "inicio" ? "Buen día, Paula" : current.label}</h1><p>{descriptions[section] ?? descriptions.ventas}</p></div>{!(["inicio", "ventas", "pedidos", "stock", "compras", "productos", "fabricacion", "finanzas", "calendario"] as SectionId[]).includes(section) && <Button className="context-create" variant="primary" size="md" icon={<span>＋</span>} onClick={() => openCreate(section.slice(0, -1) || section)}>{createLabel(section)}</Button>}</div>
         {notice && <div className="toast" role="status"><span>✓</span>{notice}</div>}
         {activeSearch && <div className="search-notice"><span><KhoraIcon name="search" /></span><div><strong>Mostrando resultados para “{activeSearch}”</strong><p>Filtro aplicado desde la búsqueda global o una acción del centro operativo.</p></div><button onClick={() => setActiveSearch("")}>Limpiar</button></div>}
-        <SectionContent key={`${section}-${recordRevision}-${activeSearch}`} section={section} search={activeSearch} onNavigate={goTo} onCreate={openCreate} />
+        <SectionContent key={`${section}-${recordRevision}-${activeSearch}`} section={section} search={activeSearch} onNavigate={goTo} onCreate={openCreate} dashboardSnapshot={dashboardSnapshot} dashboardLoading={dashboardLoading} dashboardError={dashboardError} dashboardLoaded={dashboardLoaded} />
       </main>
     </div>
     {createKind && <div className="drawer-layer" role="presentation"><button className="drawer-backdrop" onClick={() => setCreateKind(null)} aria-label="Cerrar formulario" /><aside className="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title"><div className="drawer-header"><div><p>NUEVO REGISTRO</p><h2 id="drawer-title">{drawerTitle(createKind)}</h2></div><button onClick={() => setCreateKind(null)} aria-label="Cerrar">×</button></div><CreateForm kind={createKind} onSubmit={saveCreate} onCancel={() => setCreateKind(null)} /></aside></div>}
@@ -190,13 +198,14 @@ function GlobalSearchPalette({ query, results, selectedIndex, onSelect, onClose 
   return <div className="search-palette-layer"><button className="search-palette-backdrop" onClick={onClose} aria-label="Cerrar búsqueda" /><section className="search-palette" id="global-search-results" role="dialog" aria-modal="true" aria-label="Resultados de búsqueda global"><header><span><KhoraIcon name="search" /></span><div><strong>Resultados para “{query}”</strong><small>{results.length ? `${results.length} coincidencias en KHORA` : "Sin coincidencias"}</small></div><kbd>ESC</kbd></header><div className="search-results" role="listbox">{results.length ? Object.entries(groups).map(([category, items]) => <section key={category}><h2>{category}</h2>{items?.map((result) => { const resultIndex = results.indexOf(result); return <button key={result.id} className={resultIndex === selectedIndex ? "selected" : ""} role="option" aria-selected={resultIndex === selectedIndex} onMouseEnter={() => undefined} onClick={() => onSelect(result)}><i><KhoraIcon name={result.icon} /></i><span><strong>{result.title}</strong><small>{result.subtitle}</small></span><b>↗</b></button>; })}</section>) : <div className="search-empty"><span><KhoraIcon name="search" /></span><strong>No encontramos resultados</strong><p>Probá con un cliente, producto, materia prima, lote, mezcla o proveedor.</p></div>}</div><footer><span>↑↓ Navegar</span><span>↵ Abrir</span><span>Esc Cerrar</span></footer></section></div>;
 }
 
-function NotificationCenter({ alerts, onNavigate, onDismiss, onClose }: { alerts: ReturnType<typeof getOperationalOverview>["alerts"]; onNavigate: (destination: NavigationIntent) => void; onDismiss: (id: string) => void; onClose: () => void }) {
+function NotificationCenter({ alerts, onNavigate, onDismiss, onClose, error, loaded }: { alerts: ReturnType<typeof getOperationalOverview>["alerts"]; onNavigate: (destination: NavigationIntent) => void; onDismiss: (id: string) => void; onClose: () => void; error: string; loaded: boolean }) {
   const groups = [
     { id: "critical", label: "Crítico", items: alerts.filter((alert) => alert.priority === "critical") },
     { id: "attention", label: "Atención", items: alerts.filter((alert) => alert.priority === "attention") },
     { id: "information", label: "Información", items: alerts.filter((alert) => alert.priority === "information") },
   ];
-  return <div className="notification-layer"><button className="notification-backdrop" onClick={onClose} aria-label="Cerrar alertas" /><aside className="notification-center" role="dialog" aria-modal="true" aria-labelledby="notification-title"><header><div><p>CENTRO DE ALERTAS</p><h2 id="notification-title">Requiere tu atención</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></header><div>{groups.map((group) => group.items.length > 0 && <section key={group.id}><h3><i className={`priority-dot ${group.id}`} />{group.label}<span>{group.items.length}</span></h3>{group.items.map((alert) => <article className="notification-row" key={alert.id}><button className="notification-open" onClick={() => onNavigate(alert.destination)}><i className={`dot ${alert.tone}`} /><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><b>→</b></button>{alert.dismissible !== false && <button className="notification-dismiss" title="Ocultar alerta" aria-label={`Ocultar ${alert.title}`} onClick={() => onDismiss(alert.id)}>×</button>}</article>)}</section>)}{!alerts.length && <div className="notification-empty"><span>✓</span><strong>No hay alertas activas</strong><small>Todo está al día.</small></div>}</div><footer>Las alertas de stock reflejan el estado actual y desaparecen al normalizarse. Las demás alertas se pueden ocultar.</footer></aside></div>;
+  const emptyMessage = error ? { icon: "!", title: "No pudimos actualizar las alertas", detail: "Reintentá la actualización antes de tomar decisiones de stock." } : { icon: "✓", title: "No hay alertas activas", detail: "Todo está al día." };
+  return <div className="notification-layer"><button className="notification-backdrop" onClick={onClose} aria-label="Cerrar alertas" /><aside className="notification-center" role="dialog" aria-modal="true" aria-labelledby="notification-title"><header><div><p>CENTRO DE ALERTAS</p><h2 id="notification-title">Requiere tu atención</h2></div><button onClick={onClose} aria-label="Cerrar">×</button></header><div>{!loaded ? <div className="notification-empty"><span>{error ? "!" : "…"}</span><strong>{error ? "No pudimos actualizar las alertas" : "Cargando alertas reales…"}</strong><small>{error ? "Reintentá la actualización antes de tomar decisiones de stock." : "Estamos verificando productos, materias primas y pedidos."}</small></div> : <>{groups.map((group) => group.items.length > 0 && <section key={group.id}><h3><i className={`priority-dot ${group.id}`} />{group.label}<span>{group.items.length}</span></h3>{group.items.map((alert) => <article className="notification-row" key={alert.id}><button className="notification-open" onClick={() => onNavigate(alert.destination)}><i className={`dot ${alert.tone}`} /><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><b>→</b></button>{alert.dismissible !== false && <button className="notification-dismiss" title="Ocultar alerta" aria-label={`Ocultar ${alert.title}`} onClick={() => onDismiss(alert.id)}>×</button>}</article>)}</section>)}{!alerts.length && <div className="notification-empty"><span>{emptyMessage.icon}</span><strong>{emptyMessage.title}</strong><small>{emptyMessage.detail}</small></div>}</>}</div><footer>Las alertas de stock reflejan el estado actual y desaparecen al normalizarse. Las demás alertas se pueden ocultar.</footer></aside></div>;
 }
 
 function createLabel(section: SectionId) { const labels: Partial<Record<SectionId, string>> = { ventas: "Nueva venta", clientes: "Nuevo cliente", productos: "Nuevo producto", fabricacion: "Nueva fabricación", stock: "Ajustar stock", compras: "Nueva compra", proveedores: "Nuevo proveedor", finanzas: "Nuevo gasto" }; return labels[section] ?? "Nuevo"; }
