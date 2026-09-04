@@ -46,3 +46,10 @@ test("Administración expone el acceso a la Tienda pública sin tratarla como m�
   assert.match(admin, /<span>Ver Tienda<\/span>/);
   assert.match(proxy, /const isStore = request\.nextUrl\.pathname === "\/tienda"/);
 });
+test("la tienda muestra recursos editoriales cuando un producto publicado no tiene foto", async () => {
+  const page = await read("app/tienda/page.tsx");
+  for (const asset of [
+    "khora-product-aromatizador.png", "khora-product-difusor.png", "khora-product-combo.png",
+  ]) assert.ok(page.includes(asset));
+  assert.match(page, /productImage\(product\) \?\? fallbackProductImage\(product\)/);
+});

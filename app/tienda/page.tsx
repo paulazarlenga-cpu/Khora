@@ -12,6 +12,13 @@ type StoreOrder = { number: string; expiresAt: string; totalCents: number; statu
 const money = (cents: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(cents / 100);
 const formatQuantity = (value: number) => Number.isInteger(value) ? String(value) : value.toLocaleString("es-AR", { maximumFractionDigits: 2 });
 const productImage = (product: Product) => product.imagePath && /^(https?:|\/)/.test(product.imagePath) ? product.imagePath : null;
+const fallbackProductImage = (product: Product) => {
+  const key = `${product.code} ${product.name}`.toLowerCase();
+  if (key.includes("pro-003") || key.includes("aromatizador")) return "/khora-product-aromatizador.png";
+  if (key.includes("pro-001") || key.includes("difusor")) return "/khora-product-difusor.png";
+  if (key.includes("com-001") || key.includes("combo")) return "/khora-product-combo.png";
+  return null;
+};
 const friendlyError = (cause: unknown, fallback: string) => {
   const message = cause instanceof Error ? cause.message : "";
   return /^(Solo quedan |Uno de los productos ya no está disponible\.|La reserva venció\.|El precio de uno o más productos se actualizó\.|Ingresá |Revisá las cantidades|No pudimos )/.test(message) ? message : fallback;
@@ -182,7 +189,7 @@ export default function StorePage() {
   }
   async function copyOrderNumber() { if (!order) return; try { await navigator.clipboard.writeText(order.number); setCopiedOrder(true); window.setTimeout(() => setCopiedOrder(false), 1800); } catch { setWhatsappError("No pudimos copiar el número de pedido."); } }
   return <div className={styles.storeShell}>
-    <header className={styles.header}><a className={styles.logo} href="/tienda" onClick={(event) => { event.preventDefault(); navigate("home"); }} aria-label="KHORA, volver al inicio"><span className={styles.wordmark}>KHORA</span></a><nav aria-label="Navegación de la tienda"><button className={`${styles.navItem} ${view === "home" ? styles.navActive : ""}`} onClick={() => navigate("home")} aria-current={view === "home" ? "page" : undefined}>Inicio</button><details className={styles.collectionMenu}><summary className={styles.navItem}>Colecciones <span aria-hidden="true">⌄</span></summary><div className={styles.collectionMenuPanel}>{categories.filter((item) => item !== "Todas").map((item) => <button key={item} onClick={() => { setCategory(item); navigate("home"); setTimeout(() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" }), 20); }}>{item}</button>)}<button onClick={() => { setCategory("Todas"); navigate("home"); setTimeout(() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" }), 20); }}>Ver todo <span aria-hidden="true">→</span></button></div></details><button className={styles.navItem} onClick={() => { navigate("home"); setTimeout(() => document.getElementById("historia")?.scrollIntoView({ behavior: "smooth" }), 20); }}>Nosotros</button></nav><div className={styles.headerActions}><label className={styles.search}><span aria-hidden="true">⌕</span><input value={query} onChange={(event) => { setQuery(event.target.value); if (view !== "home") navigate("home"); }} placeholder="Buscar" aria-label="Buscar productos" /></label><button className={styles.favoriteAction} type="button" aria-label="Favoritos próximamente">♡</button><button className={styles.textAction} onClick={() => navigate("cart")}>Bolsa {cartCount ? `(${cartCount})` : ""}</button></div></header>
+    <StoreHeader view={view} cartCount={cartCount} query={query} onHome={() => navigate("home")} onCatalog={() => { navigate("home"); setTimeout(() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" }), 20); }} onStory={() => { navigate("home"); setTimeout(() => document.getElementById("historia")?.scrollIntoView({ behavior: "smooth" }), 20); }} onCart={() => navigate("cart")} onQueryChange={(value) => { setQuery(value); if (view !== "home") navigate("home"); }} />
     {notice && <div className={styles.notice} role="status">{notice}<button onClick={() => setNotice("")} aria-label="Cerrar aviso">×</button></div>}
     {error && <div className={styles.error} role="alert">{error}<button onClick={() => setError("")} aria-label="Cerrar error">×</button></div>}
     {view === "home" && <>
@@ -196,9 +203,35 @@ export default function StorePage() {
   </div>;
 }
 
+type StoreHeaderProps = {
+  view: View;
+  cartCount: number;
+  query: string;
+  onHome: () => void;
+  onCatalog: () => void;
+  onStory: () => void;
+  onCart: () => void;
+  onQueryChange: (value: string) => void;
+};
+
+function StoreHeader({ view, cartCount, query, onHome, onCatalog, onStory, onCart, onQueryChange }: StoreHeaderProps) {
+  return <header className={`${styles.header} ${styles.publicHeader}`}>
+    <a className={styles.logo} href="/tienda" onClick={(event) => { event.preventDefault(); onHome(); }} aria-label="KHORA, volver al inicio"><span className={styles.wordmark}>KHORA</span></a>
+    <nav aria-label="Store navigation">
+      <button className={`${styles.navItem} ${view === "home" ? styles.navActive : ""}`} onClick={onHome} aria-current={view === "home" ? "page" : undefined}>Inicio</button>
+      <button className={styles.navItem} onClick={onCatalog}>Colecciones</button>
+      <button className={styles.navItem} onClick={onStory}>Nosotros</button>
+    </nav>
+    <div className={styles.headerActions}>
+      <label className={styles.search}><span aria-hidden="true">&#8981;</span><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar" aria-label="Buscar productos" /></label>
+      <button className={`${styles.textAction} ${styles.bagAction}`} onClick={onCart} aria-label="Abrir bolsa"><svg className={styles.bagIcon} viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8.5h13l1 11h-15l1-11Z" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M9 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg><span>Bolsa {cartCount ? `(${cartCount})` : ""}</span></button>
+    </div>
+  </header>;
+}
+
 function ProductImage({ product, alt, compact = false }: { product: Product; alt: string; compact?: boolean }) {
   const [failed, setFailed] = useState(false);
-  const image = productImage(product);
+  const image = productImage(product) ?? fallbackProductImage(product);
   if (image && !failed) return <img src={image} alt={alt} onError={() => setFailed(true)} />;
   if (compact) return <span>KH</span>;
   return <div className={styles.placeholder}><span>KH</span><small>Hecho para tu espacio</small></div>;
