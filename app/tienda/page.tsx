@@ -189,7 +189,7 @@ export default function StorePage() {
   }
   async function copyOrderNumber() { if (!order) return; try { await navigator.clipboard.writeText(order.number); setCopiedOrder(true); window.setTimeout(() => setCopiedOrder(false), 1800); } catch { setWhatsappError("No pudimos copiar el número de pedido."); } }
   return <div className={styles.storeShell}>
-    <StoreHeader view={view} cartCount={cartCount} query={query} onHome={() => navigate("home")} onCatalog={() => { navigate("home"); setTimeout(() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" }), 20); }} onStory={() => { navigate("home"); setTimeout(() => document.getElementById("historia")?.scrollIntoView({ behavior: "smooth" }), 20); }} onCart={() => navigate("cart")} onQueryChange={(value) => { setQuery(value); if (view !== "home") navigate("home"); }} />
+    <StoreHeader cartCount={cartCount} query={query} onHome={() => navigate("home")} onCatalog={() => { navigate("home"); setTimeout(() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" }), 20); }} onStory={() => { navigate("home"); setTimeout(() => document.getElementById("historia")?.scrollIntoView({ behavior: "smooth" }), 20); }} onCart={() => navigate("cart")} onQueryChange={(value) => { setQuery(value); if (view !== "home") navigate("home"); }} />
     {notice && <div className={styles.notice} role="status">{notice}<button onClick={() => setNotice("")} aria-label="Cerrar aviso">×</button></div>}
     {error && <div className={styles.error} role="alert">{error}<button onClick={() => setError("")} aria-label="Cerrar error">×</button></div>}
     {view === "home" && <>
@@ -204,7 +204,6 @@ export default function StorePage() {
 }
 
 type StoreHeaderProps = {
-  view: View;
   cartCount: number;
   query: string;
   onHome: () => void;
@@ -214,11 +213,11 @@ type StoreHeaderProps = {
   onQueryChange: (value: string) => void;
 };
 
-function StoreHeader({ view, cartCount, query, onHome, onCatalog, onStory, onCart, onQueryChange }: StoreHeaderProps) {
+function StoreHeader({ cartCount, query, onHome, onCatalog, onStory, onCart, onQueryChange }: StoreHeaderProps) {
   return <header className={`${styles.header} ${styles.publicHeader}`}>
     <a className={styles.logo} href="/tienda" onClick={(event) => { event.preventDefault(); onHome(); }} aria-label="KHORA, volver al inicio"><span className={styles.wordmark}>KHORA</span></a>
     <nav aria-label="Store navigation">
-      <button className={`${styles.navItem} ${view === "home" ? styles.navActive : ""}`} onClick={onHome} aria-current={view === "home" ? "page" : undefined}>Inicio</button>
+      <button className={styles.navItem} onClick={onHome}>Inicio</button>
       <button className={styles.navItem} onClick={onCatalog}>Colecciones</button>
       <button className={styles.navItem} onClick={onStory}>Nosotros</button>
     </nav>
