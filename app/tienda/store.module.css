@@ -143,3 +143,86 @@
   .bagAnimating .bagFill,
   .bagAnimating .bagLabel { animation:none; }
 }
+
+/* Shared editorial search treatment for the storefront header and catalog. */
+.search,
+.catalogSearch {
+  position: relative;
+  border-bottom: 0;
+  padding-bottom: 6px;
+  isolation: isolate;
+}
+
+.search::before,
+.search::after,
+.catalogSearch::before,
+.catalogSearch::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  pointer-events: none;
+}
+
+.search::before,
+.catalogSearch::before {
+  background: var(--line);
+  opacity: .9;
+}
+
+.search::after,
+.catalogSearch::after {
+  background: var(--khora-green);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform .35s cubic-bezier(.22,1,.36,1);
+}
+
+.search:focus-within::after,
+.catalogSearch:focus-within::after {
+  transform: scaleX(1);
+}
+
+.search:hover::before,
+.catalogSearch:hover::before {
+  opacity: 1;
+}
+
+.search > span,
+.catalogSearch > span {
+  color: var(--khora-text-muted);
+  transition: color .25s ease, opacity .25s ease, transform .25s ease;
+}
+
+.search:hover > span,
+.catalogSearch:hover > span,
+.search:focus-within > span,
+.catalogSearch:focus-within > span {
+  color: var(--khora-green);
+  opacity: 1;
+  transform: translateY(-1px) scale(1.04);
+}
+
+.search input::placeholder,
+.catalogSearch input::placeholder {
+  opacity: .82;
+  transition: opacity .25s ease;
+}
+
+.search:focus-within input::placeholder,
+.catalogSearch:focus-within input::placeholder {
+  opacity: .72;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search::after,
+  .catalogSearch::after,
+  .search > span,
+  .catalogSearch > span,
+  .search input::placeholder,
+  .catalogSearch input::placeholder {
+    transition: none;
+  }
+}
