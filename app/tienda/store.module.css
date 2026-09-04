@@ -457,3 +457,106 @@
     animation: none;
   }
 }
+
+/* CTA exclusivo del hero: interacción aislada para “Descubrir KHORA”. */
+.discoverButton {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  gap: 0;
+  transform: translateY(0);
+  transition: transform .2s ease;
+}
+
+.discoverButton:hover,
+.discoverButton:focus-visible {
+  background: var(--khora-green);
+  border-color: var(--khora-green);
+}
+
+.discoverSweep {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: #2f5a4a;
+  transform: translateX(-100%);
+  transition: transform .4s cubic-bezier(.4,0,.2,1);
+}
+
+.discoverText,
+.discoverArrow {
+  position: relative;
+  z-index: 1;
+  margin-left: 0 !important;
+  font-size: inherit !important;
+}
+
+.discoverText {
+  transition: letter-spacing .3s ease;
+}
+
+.discoverArrow {
+  display: inline-block;
+  margin-left: 12px !important;
+  font-size: 17px !important;
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+}
+
+.discoverButton:hover .discoverSweep,
+.discoverButton:focus-visible .discoverSweep {
+  transform: translateX(0);
+}
+
+.discoverButton:hover .discoverText,
+.discoverButton:focus-visible .discoverText {
+  letter-spacing: .19em;
+}
+
+.discoverButton:hover,
+.discoverButton:focus-visible {
+  transform: translateY(-1px);
+}
+
+.discoverButton:hover .discoverArrow,
+.discoverButton:focus-visible .discoverArrow {
+  transform: translateX(6px);
+}
+
+.discoverButton:active {
+  transform: translateY(0) scale(.97);
+}
+
+.discoverButton:focus-visible {
+  outline: 2px solid var(--cream);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .discoverButton,
+  .discoverSweep,
+  .discoverText,
+  .discoverArrow {
+    transition: none;
+  }
+
+  .discoverSweep {
+    transform: translateX(-100%);
+  }
+
+  .discoverButton:hover,
+  .discoverButton:focus-visible,
+  .discoverButton:active {
+    transform: none;
+  }
+
+  .discoverButton:hover .discoverSweep,
+  .discoverButton:focus-visible .discoverSweep {
+    transform: none;
+  }
+
+  .discoverButton:hover .discoverArrow,
+  .discoverButton:focus-visible .discoverArrow {
+    transform: none;
+  }
+}
