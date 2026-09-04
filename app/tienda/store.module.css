@@ -692,3 +692,51 @@
     letter-spacing: .07em;
   }
 }
+
+/* Newsletter destacada: bloque verde con contenido centrado. */
+.newsletter {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  gap: 24px;
+  border-top: 0;
+  background: var(--khora-green);
+  color: var(--khora-ivory);
+  text-align: center;
+}
+
+.newsletter > div,
+.newsletter > div:nth-child(2) {
+  width: 100%;
+  max-width: 620px;
+}
+
+.newsletter h2 {
+  color: var(--khora-ivory);
+}
+
+.newsletter > div:nth-child(2) > p {
+  max-width: 540px;
+  margin-right: auto;
+  margin-left: auto;
+  color: rgba(245, 241, 233, .8);
+}
+
+.newsletterField {
+  max-width: 440px;
+  margin: 0 auto;
+  border-bottom-color: rgba(245, 241, 233, .65);
+}
+
+.newsletterField input {
+  color: var(--khora-ivory);
+  text-align: center;
+}
+
+.newsletterField input::placeholder {
+  color: rgba(245, 241, 233, .72);
+}
+
+.newsletterField button,
+.newsletter > div:nth-child(2) > small {
+  color: rgba(245, 241, 233, .78);
+}
