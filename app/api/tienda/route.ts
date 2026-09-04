@@ -68,6 +68,28 @@ function ensureStoreSchema() {
       db().prepare("CREATE SEQUENCE IF NOT EXISTS store_order_number_seq START WITH 1"),
       db().prepare("CREATE TABLE IF NOT EXISTS store_reservations (id BIGSERIAL PRIMARY KEY, token TEXT NOT NULL UNIQUE, status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','COMMITTED','EXPIRED','RELEASED')), expires_at TIMESTAMPTZ NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP)"),
       db().prepare("CREATE TABLE IF NOT EXISTS store_reservation_items (id BIGSERIAL PRIMARY KEY, reservation_id BIGINT NOT NULL REFERENCES store_reservations(id) ON DELETE CASCADE, product_id INTEGER NOT NULL REFERENCES products(id), quantity NUMERIC NOT NULL CHECK(quantity>0), unit_price_cents INTEGER NOT NULL CHECK(unit_price_cents>=0), UNIQUE(reservation_id,product_id))"),
+      db().prepare(`CREATE OR REPLACE FUNCTION khora_available_product_stock(excluded_reservation_token TEXT DEFAULT NULL)
+        RETURNS TABLE(product_id INTEGER,reserved_stock NUMERIC,committed_stock NUMERIC,available_stock NUMERIC)
+        LANGUAGE SQL STABLE SET search_path = public AS $$
+          WITH reserved AS (
+            SELECT sri.product_id,SUM(sri.quantity) quantity
+            FROM store_reservation_items sri JOIN store_reservations sr ON sr.id=sri.reservation_id
+            WHERE sr.status='ACTIVE' AND sr.expires_at>CURRENT_TIMESTAMP
+              AND (excluded_reservation_token IS NULL OR sr.token<>excluded_reservation_token)
+            GROUP BY sri.product_id
+          ), committed AS (
+            SELECT oi.product_id,SUM(oi.quantity) quantity
+            FROM order_items oi JOIN orders o ON o.id=oi.order_id
+            WHERE oi.product_id IS NOT NULL AND o.store_source='STORE' AND o.store_stock_committed_at IS NOT NULL
+              AND (
+                COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END) IN ('PAID','PENDING_DELIVERY')
+                OR (COALESCE(o.store_status,'PENDING_PAYMENT')='PENDING_PAYMENT' AND o.expected_at IS NOT NULL AND CAST(o.expected_at AS TIMESTAMPTZ)>CURRENT_TIMESTAMP)
+              )
+            GROUP BY oi.product_id
+          )
+          SELECT p.id,COALESCE(reserved.quantity,0),COALESCE(committed.quantity,0),GREATEST(0,p.current_stock-COALESCE(reserved.quantity,0)-COALESCE(committed.quantity,0))
+          FROM products p LEFT JOIN reserved ON reserved.product_id=p.id LEFT JOIN committed ON committed.product_id=p.id
+        $$`),
       db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS orders_store_idempotency_uq ON orders(store_idempotency_key) WHERE store_idempotency_key IS NOT NULL"),
       db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS orders_store_access_token_uq ON orders(store_access_token) WHERE store_access_token IS NOT NULL"),
       db().prepare("CREATE UNIQUE INDEX IF NOT EXISTS orders_store_reservation_uq ON orders(store_reservation_id) WHERE store_reservation_id IS NOT NULL"),
@@ -107,33 +129,13 @@ const cleanCartItems = (value: unknown): CartItemInput[] => {
   return [...grouped.entries()].map(([productId, quantity]) => ({ productId, quantity }));
 };
 
-async function expireReservations() {
-  await db().prepare("UPDATE store_reservations SET status='EXPIRED',updated_at=CURRENT_TIMESTAMP WHERE status='ACTIVE' AND expires_at<=CURRENT_TIMESTAMP").run();
-}
-
 async function listStoreProducts(token = ""): Promise<StoreProduct[]> {
-  await expireReservations();
-  const result = await db().prepare(`WITH reserved AS (
-      SELECT sri.product_id, SUM(sri.quantity) quantity
-      FROM store_reservation_items sri JOIN store_reservations sr ON sr.id=sri.reservation_id
-      WHERE sr.status='ACTIVE' AND sr.expires_at>CURRENT_TIMESTAMP AND sr.token<>?
-      GROUP BY sri.product_id
-    ), committed AS (
-      SELECT oi.product_id, SUM(oi.quantity) quantity
-      FROM order_items oi JOIN orders o ON o.id=oi.order_id
-      WHERE oi.product_id IS NOT NULL AND o.store_source='STORE' AND o.store_stock_committed_at IS NOT NULL
-        AND (
-          COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END) IN ('PAID','PENDING_DELIVERY')
-          OR (COALESCE(o.store_status,'PENDING_PAYMENT')='PENDING_PAYMENT' AND o.expected_at IS NOT NULL AND CAST(o.expected_at AS TIMESTAMPTZ)>CURRENT_TIMESTAMP)
-        )
-      GROUP BY oi.product_id
-    )
-    SELECT p.id,cb.code,cb.name,COALESCE(cb.description,'') description,COALESCE(c.name,'') category,p.type,p.sale_price_cents,p.current_stock,
-      GREATEST(0,p.current_stock-COALESCE(reserved.quantity,0)-COALESCE(committed.quantity,0)) available_stock,p.store_published,
+  const result = await db().prepare(`SELECT p.id,cb.code,cb.name,COALESCE(cb.description,'') description,COALESCE(c.name,'') category,p.type,p.sale_price_cents,p.current_stock,
+      COALESCE(stock.available_stock,p.current_stock) available_stock,p.store_published,
       (SELECT value_json FROM app_settings WHERE key='product_image_'||p.id) image_path
     FROM products p JOIN code_base cb ON cb.id=p.code_base_id LEFT JOIN categories c ON c.id=p.category_id
-    LEFT JOIN reserved ON reserved.product_id=p.id LEFT JOIN committed ON committed.product_id=p.id
-    WHERE p.active=1 AND p.store_published=TRUE AND p.sale_price_cents>0 ORDER BY cb.name`).bind(token).all<Row>();
+    LEFT JOIN khora_available_product_stock(?) stock ON stock.product_id=p.id
+    WHERE p.active=1 AND p.store_published=TRUE AND p.sale_price_cents>0 ORDER BY cb.name`).bind(token || null).all<Row>();
   return result.results.map((row) => ({
     id: asNumber(row.id), code: asString(row.code), name: asString(row.name), description: asString(row.description), category: asString(row.category) || "Colección KHORA", type: asString(row.type), priceCents: asNumber(row.sale_price_cents), stock: asNumber(row.current_stock), availableStock: asNumber(row.available_stock), imagePath: parseImagePath(row.image_path), published: Boolean(row.store_published),
   }));
@@ -152,7 +154,7 @@ async function getSettings() {
 }
 
 async function reservationByToken(token: string) {
-  return db().prepare("SELECT id,token,status,expires_at FROM store_reservations WHERE token=?").bind(token).first<Row>();
+  return db().prepare("SELECT id,token,status,expires_at,(status='ACTIVE' AND expires_at>CURRENT_TIMESTAMP) is_active FROM store_reservations WHERE token=?").bind(token).first<Row>();
 }
 
 async function reserveCart(tokenInput: unknown, itemsInput: unknown) {
@@ -168,18 +170,14 @@ async function reserveCart(tokenInput: unknown, itemsInput: unknown) {
       await tx.prepare("SELECT pg_advisory_xact_lock(hashtextextended('khora-stock:' || ?::text, 0))").bind(productId).run();
     }
     await tx.prepare("UPDATE store_reservations SET status='EXPIRED',updated_at=CURRENT_TIMESTAMP WHERE status='ACTIVE' AND expires_at<=CURRENT_TIMESTAMP").run();
-    let reservation = await tx.prepare("SELECT id,token,status,expires_at FROM store_reservations WHERE token=? FOR UPDATE").bind(token).first<Row>();
+    let reservation = await tx.prepare("SELECT id,token,status,expires_at,(status='ACTIVE' AND expires_at>CURRENT_TIMESTAMP) is_active FROM store_reservations WHERE token=? FOR UPDATE").bind(token).first<Row>();
     if (reservation && asString(reservation.status) === "COMMITTED") throw new Error("Este carrito ya generó un pedido.");
     const placeholders = productIds.map(() => "?").join(",");
     const availability = (await tx.prepare(`SELECT p.id,cb.code,cb.name,p.sale_price_cents,p.current_stock,
-        GREATEST(0,p.current_stock
-          -COALESCE((SELECT SUM(sri.quantity) FROM store_reservation_items sri JOIN store_reservations sr ON sr.id=sri.reservation_id WHERE sri.product_id=p.id AND sr.status='ACTIVE' AND sr.expires_at>CURRENT_TIMESTAMP AND sr.token<>?),0)
-          -COALESCE((SELECT SUM(oi.quantity) FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=p.id AND o.store_source='STORE' AND (
-            COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END) IN ('PAID','PENDING_DELIVERY')
-            OR (COALESCE(o.store_status,'PENDING_PAYMENT')='PENDING_PAYMENT' AND o.expected_at IS NOT NULL AND CAST(o.expected_at AS TIMESTAMPTZ)>CURRENT_TIMESTAMP)
-          )),0)
-        ) available_stock,p.active,p.store_published
-      FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE p.id IN (${placeholders})`).bind(token, ...productIds).all<Row>()).results;
+        COALESCE(stock.available_stock,p.current_stock) available_stock,p.active,p.store_published
+      FROM products p JOIN code_base cb ON cb.id=p.code_base_id
+      LEFT JOIN khora_available_product_stock(?) stock ON stock.product_id=p.id
+      WHERE p.id IN (${placeholders})`).bind(token, ...productIds).all<Row>()).results;
     const byId = new Map(availability.map((row) => [asNumber(row.id), row]));
     for (const item of items) {
       const product = byId.get(item.productId);
@@ -292,8 +290,8 @@ async function createStoreOrder(body: Record<string, unknown>) {
       for (const productId of productIds) {
         await tx.prepare("SELECT pg_advisory_xact_lock(hashtextextended('khora-stock:' || ?::text, 0))").bind(productId).run();
       }
-      const reservation = await tx.prepare("SELECT id,token,status,expires_at FROM store_reservations WHERE token=? FOR UPDATE").bind(token).first<Row>();
-      if (!reservation || asString(reservation.status) !== "ACTIVE" || new Date(asString(reservation.expires_at)).getTime() <= Date.now()) throw new Error("La reserva venció. Volvé al carrito para comprobar la disponibilidad.");
+      const reservation = await tx.prepare("SELECT id,token,status,expires_at,(status='ACTIVE' AND expires_at>CURRENT_TIMESTAMP) is_active FROM store_reservations WHERE token=? FOR UPDATE").bind(token).first<Row>();
+      if (!reservation || !Boolean(reservation.is_active)) throw new Error("La reserva venció. Volvé al carrito para comprobar la disponibilidad.");
       const reservationItems = (await tx.prepare(`SELECT sri.product_id,sri.quantity,sri.unit_price_cents,p.sale_price_cents,cb.name,p.current_stock,p.active,p.store_published
         FROM store_reservation_items sri JOIN products p ON p.id=sri.product_id JOIN code_base cb ON cb.id=p.code_base_id
         WHERE sri.reservation_id=? ORDER BY sri.id`).bind(asNumber(reservation.id)).all<Row>()).results;
@@ -303,14 +301,10 @@ async function createStoreOrder(body: Record<string, unknown>) {
       if (changed.length) return { priceChanged: true, changes: changed };
       const placeholders = productIds.map(() => "?").join(",");
       const availability = (await tx.prepare(`SELECT p.id,cb.code,cb.name,p.sale_price_cents,p.current_stock,
-          GREATEST(0,p.current_stock
-            -COALESCE((SELECT SUM(sri.quantity) FROM store_reservation_items sri JOIN store_reservations sr ON sr.id=sri.reservation_id WHERE sri.product_id=p.id AND sr.status='ACTIVE' AND sr.expires_at>CURRENT_TIMESTAMP AND sr.token<>?),0)
-            -COALESCE((SELECT SUM(oi.quantity) FROM order_items oi JOIN orders o ON o.id=oi.order_id WHERE oi.product_id=p.id AND o.store_source='STORE' AND (
-              COALESCE(o.store_status,CASE WHEN o.status='DELIVERED' THEN 'DELIVERED' WHEN o.status='CANCELLED' THEN 'CANCELLED' WHEN o.payment_status='PAID' THEN 'PENDING_DELIVERY' ELSE 'PENDING_PAYMENT' END) IN ('PAID','PENDING_DELIVERY')
-              OR (COALESCE(o.store_status,'PENDING_PAYMENT')='PENDING_PAYMENT' AND o.expected_at IS NOT NULL AND CAST(o.expected_at AS TIMESTAMPTZ)>CURRENT_TIMESTAMP)
-            )),0)
-          ) available_stock
-        FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE p.id IN (${placeholders})`).bind(token, ...productIds).all<Row>()).results;
+          COALESCE(stock.available_stock,p.current_stock) available_stock
+        FROM products p JOIN code_base cb ON cb.id=p.code_base_id
+        LEFT JOIN khora_available_product_stock(?) stock ON stock.product_id=p.id
+        WHERE p.id IN (${placeholders})`).bind(token, ...productIds).all<Row>()).results;
       const byId = new Map(availability.map((row) => [asNumber(row.id), row]));
       for (const item of reservationItems) {
         const product = byId.get(asNumber(item.product_id));
@@ -354,7 +348,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const entity = asString(url.searchParams.get("entity")) || "products";
     if (entity === "settings") return json(await getSettings());
-    if (entity === "products") { const token = asString(url.searchParams.get("token")); const products = await listStoreProducts(token); const reservation = token ? await reservationByToken(token) : null; const reservationExpiresAt = reservation && asString(reservation.status) === "ACTIVE" && new Date(asString(reservation.expires_at)).getTime() > Date.now() ? asString(reservation.expires_at) : ""; return json({ products, reservationExpiresAt }); }
+    if (entity === "products") { const token = asString(url.searchParams.get("token")); const products = await listStoreProducts(token); const reservation = token ? await reservationByToken(token) : null; const reservationExpiresAt = reservation && Boolean(reservation.is_active) ? asString(reservation.expires_at) : ""; return json({ products, reservationExpiresAt }); }
     if (entity === "product") {
       const id = asNumber(url.searchParams.get("id"));
       const product = (await listStoreProducts(asString(url.searchParams.get("token")))).find((item) => item.id === id);

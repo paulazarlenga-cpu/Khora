@@ -14,7 +14,7 @@
     "setup:storage": "node scripts/setup-private-storage.mjs",
     "export:d1": "python scripts/export-local-d1.py",
     "import:d1": "node scripts/import-d1-to-supabase.mjs",
-    "test": "next build && node --test tests/khora-structure.test.mjs tests/khora-finance-v2.test.mjs tests/rendered-html.test.mjs",
+    "test": "next build && node --test tests/khora-structure.test.mjs tests/khora-finance-v2.test.mjs tests/rendered-html.test.mjs tests/khora-store-hobby.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern work/site-package-stage/dist",
     "db:generate": "drizzle-kit generate"
   },

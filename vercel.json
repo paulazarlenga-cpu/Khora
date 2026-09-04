@@ -3,10 +3,6 @@
     {
       "path": "/api/khora?entity=finance_auto_close",
       "schedule": "5 3 1 * *"
-    },
-    {
-      "path": "/api/khora?entity=orders_auto_expire",
-      "schedule": "0 * * * *"
     }
   ]
 }
