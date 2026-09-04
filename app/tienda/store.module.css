@@ -226,3 +226,217 @@
     transition: none;
   }
 }
+
+/* Add-to-cart feedback shared by product cards and product detail. */
+.addButton {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.addButtonText,
+.addButtonIcon,
+.addButtonProgress {
+  margin: 0 !important;
+  font-size: inherit !important;
+}
+
+.addButtonText {
+  display: inline-flex;
+  height: 1.2em;
+  min-width: 118px;
+  overflow: hidden;
+  line-height: 1.2;
+}
+
+.addButtonTextTrack {
+  display: flex;
+  flex-direction: column;
+  transform: translateY(0);
+  transition: transform .32s cubic-bezier(.4,0,.2,1);
+}
+
+.addButtonTextTrack > span {
+  display: block;
+  height: 1.2em;
+  margin: 0 !important;
+  white-space: nowrap;
+  line-height: 1.2;
+}
+
+.addButton[data-add-state="added"] .addButtonTextTrack {
+  transform: translateY(-1.2em);
+}
+
+.addButtonIcon {
+  position: relative;
+  width: 17px;
+  height: 17px;
+  display: block;
+  flex: none;
+}
+
+.addButtonIcon svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0 !important;
+  transition: opacity .28s ease, transform .28s ease;
+}
+
+.addButtonCheck {
+  opacity: 0;
+  transform: scale(.82);
+}
+
+.addButton[data-add-state="added"] .addButtonArrow {
+  opacity: 0;
+  transform: translateX(3px);
+}
+
+.addButton[data-add-state="added"] .addButtonCheck {
+  opacity: 1;
+  transform: scale(1.1);
+}
+
+.addButtonLink {
+  position: relative;
+  min-width: 154px;
+  border-bottom: 0;
+  padding: 0 0 5px;
+  transition: color .2s ease;
+}
+
+.addButtonLink::before,
+.addButtonLink::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 1px;
+  pointer-events: none;
+}
+
+.addButtonLink::before {
+  background: var(--line);
+}
+
+.addButtonLink::after {
+  background: var(--khora-green-deep);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .22s ease;
+}
+
+.addButtonLink[data-add-state="adding"]::after {
+  transform: scaleX(1);
+  transition-duration: .75s;
+  transition-timing-function: cubic-bezier(.4,0,.2,1);
+}
+
+.addButtonLink[data-add-state="added"]::after {
+  transform: scaleX(1);
+  transition: none;
+}
+
+.addButtonProgress {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.addButtonProgressDot {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--khora-green-deep);
+  opacity: 0;
+  transform: translateX(-50%);
+}
+
+.addButtonLink[data-add-state="adding"] .addButtonProgressDot {
+  animation: addProgressDot .75s cubic-bezier(.4,0,.2,1) both;
+}
+
+.addButtonLink[data-add-state="added"] .addButtonProgressDot {
+  left: 100%;
+  opacity: 0;
+}
+
+.addButton:disabled {
+  cursor: default;
+}
+.addButtonSolid {
+  transition: background-color .18s ease, transform .18s ease;
+}
+
+.addButtonSolid:active {
+  background: var(--khora-green-deep);
+  transform: scale(.98);
+}
+
+.addButtonSolid[data-add-state="adding"] {
+  animation: addSolidPress .18s cubic-bezier(.4,0,.2,1) both;
+}
+
+.addButtonSolid[data-add-state="added"] .addButtonText,
+.addButtonSolid[data-add-state="added"] .addButtonIcon,
+.addButtonLink[data-add-state="added"] .addButtonText,
+.addButtonLink[data-add-state="added"] .addButtonIcon {
+  animation: addConfirmFade .45s ease both;
+}
+
+@keyframes addProgressDot {
+  0% { left: 0; opacity: 0; }
+  10% { opacity: 1; }
+  100% { left: 100%; opacity: 1; }
+}
+
+@keyframes addSolidPress {
+  0% { background: var(--khora-green); transform: scale(1); }
+  45% { background: var(--khora-green-deep); transform: scale(.98); }
+  100% { background: var(--khora-green); transform: scale(1); }
+}
+
+@keyframes addConfirmFade {
+  0% { opacity: 1; }
+  45% { opacity: .3; }
+  100% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .addButtonTextTrack,
+  .addButtonIcon svg,
+  .addButtonLink::after {
+    transition: none;
+  }
+
+  .addButtonLink[data-add-state="adding"]::after {
+    transform: scaleX(1);
+  }
+
+  .addButtonLink[data-add-state="adding"] .addButtonProgressDot {
+    animation: none;
+    opacity: 0;
+  }
+
+  .addButtonSolid[data-add-state="adding"] {
+    animation: none;
+  }
+
+  .addButtonSolid[data-add-state="added"] .addButtonText,
+  .addButtonSolid[data-add-state="added"] .addButtonIcon,
+  .addButtonLink[data-add-state="added"] .addButtonText,
+  .addButtonLink[data-add-state="added"] .addButtonIcon {
+    animation: none;
+  }
+}
