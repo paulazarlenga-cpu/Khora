@@ -672,3 +672,23 @@
     letter-spacing: .06em;
   }
 }
+/* Altura de la ventana de texto: evita recortar los glifos durante el cambio de estado. */
+.addButtonText {
+  height: 1.35em;
+  line-height: 1.35;
+}
+
+.addButtonTextTrack > span {
+  height: 1.35em;
+  line-height: 1.35;
+}
+
+.addButton[data-add-state="added"] .addButtonTextTrack {
+  transform: translateY(-1.35em);
+}
+
+@media (max-width: 480px) {
+  .addButtonSolid .addButtonText {
+    letter-spacing: .07em;
+  }
+}
