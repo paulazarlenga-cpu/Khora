@@ -740,3 +740,14 @@
 .newsletter > div:nth-child(2) > small {
   color: rgba(245, 241, 233, .78);
 }
+
+/* CTA de bolsa: centra cada estado dentro de la pista animada. */
+.addButtonTextTrack {
+  align-items: center;
+  text-align: center;
+}
+
+.addButtonTextTrack > span {
+  width: 100%;
+  text-align: center;
+}

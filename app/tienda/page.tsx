@@ -263,10 +263,10 @@ function AddToCartButton({ variant, onAdd, disabled = false }: AddToCartButtonPr
     resetTimer.current = window.setTimeout(() => setPhase("idle"), isLink ? 1500 : 1800);
   }
 
-  const stateLabel = phase === "added" ? "Producto agregado" : phase === "adding" ? "Agregando al carrito" : "Agregar al carrito";
+  const stateLabel = phase === "added" ? "Producto agregado" : phase === "adding" ? "Agregando a la bolsa" : "Agregar a la bolsa";
   const buttonClass = isLink ? `${styles.cardLink} ${styles.addButtonLink}` : `${styles.primary} ${styles.addButtonSolid}`;
   return <button className={`${styles.addButton} ${buttonClass}`} data-add-state={phase} onClick={handleClick} disabled={disabled || phase !== "idle"} aria-label={stateLabel}>
-    <span className={styles.addButtonText} aria-hidden="true"><span className={styles.addButtonTextTrack}><span>Agregar al carrito</span><span>Agregado</span></span></span>
+    <span className={styles.addButtonText} aria-hidden="true"><span className={styles.addButtonTextTrack}><span>Agregar a la bolsa</span><span>Agregado</span></span></span>
     <span className={styles.addButtonIcon} aria-hidden="true"><svg className={styles.addButtonArrow} viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg><svg className={styles.addButtonCheck} viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
     {isLink && <span className={styles.addButtonProgress} aria-hidden="true"><span className={styles.addButtonProgressDot} /></span>}
   </button>;
