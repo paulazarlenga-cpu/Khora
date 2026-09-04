@@ -598,3 +598,53 @@
     min-width: 0;
   }
 }
+/* Encuadre combinado de Nosotros: ambas franjas editoriales caben en el viewport. */
+.story {
+  min-height: 0;
+  padding-top: 32px;
+  padding-bottom: 32px;
+  scroll-margin-top: 84px;
+}
+
+.editorialBanner {
+  padding-top: 42px;
+  padding-bottom: 42px;
+}
+
+.editorialBanner h2 {
+  font-size: clamp(42px, 5vw, 68px);
+}
+
+@media (max-width: 850px) {
+  .story {
+    min-height: 0;
+    padding-top: 48px;
+    padding-bottom: 48px;
+    scroll-margin-top: 72px;
+  }
+
+  .editorialBanner {
+    padding-top: 52px;
+    padding-bottom: 52px;
+  }
+
+  .editorialBanner h2 {
+    font-size: clamp(42px, 11vw, 64px);
+  }
+}
+
+@media (max-width: 480px) {
+  .story {
+    padding-top: 40px;
+    padding-bottom: 40px;
+  }
+
+  .editorialBanner {
+    padding-top: 44px;
+    padding-bottom: 44px;
+  }
+
+  .editorialBanner h2 {
+    font-size: 48px;
+  }
+}
