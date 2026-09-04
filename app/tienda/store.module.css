@@ -560,3 +560,16 @@
     transform: none;
   }
 }
+/* Encuadre de Nosotros: la sección ocupa el viewport bajo el header fijo. */
+.story {
+  min-height: calc(100svh - 84px);
+  box-sizing: border-box;
+  scroll-margin-top: 84px;
+}
+
+@media (max-width: 850px) {
+  .story {
+    min-height: calc(100svh - 72px);
+    scroll-margin-top: 72px;
+  }
+}
