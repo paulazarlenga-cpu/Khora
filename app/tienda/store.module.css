@@ -573,3 +573,28 @@
     scroll-margin-top: 72px;
   }
 }
+/* Dimensiones del texto de agregar al carrito: evita cortes sin alterar otros CTA. */
+.addButtonText {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: center;
+}
+
+.addButtonTextTrack {
+  min-width: max-content;
+}
+
+.addButtonLink {
+  min-width: 174px;
+}
+
+.addButtonSolid .addButtonText {
+  letter-spacing: .1em;
+}
+
+@media (max-width: 480px) {
+  .addButtonLink {
+    width: 100%;
+    min-width: 0;
+  }
+}
