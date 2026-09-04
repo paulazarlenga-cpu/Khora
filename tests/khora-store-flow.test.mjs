@@ -35,3 +35,14 @@ test("la tienda conserva recuperación visible para catálogo y productos invál
     "ProductImage", "onError={() => setFailed(true)}", "khora-store-checkout-key",
   ]) assert.ok(page.includes(text));
 });
+
+test("Administración expone el acceso a la Tienda pública sin tratarla como módulo de gestión", async () => {
+  const [admin, proxy] = await Promise.all([
+    read("app/page.tsx"),
+    read("lib/supabase/proxy.ts"),
+  ]);
+  assert.match(admin, /className="navbar-store-link" href="\/tienda" target="_blank"/);
+  assert.match(admin, /className="sidebar-store-link" href="\/tienda" target="_blank"/);
+  assert.match(admin, /<span>Ver Tienda<\/span>/);
+  assert.match(proxy, /const isStore = request\.nextUrl\.pathname === "\/tienda"/);
+});
