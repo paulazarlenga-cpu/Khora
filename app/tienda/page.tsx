@@ -58,6 +58,7 @@ export default function StorePage() {
   const [copiedOrder, setCopiedOrder] = useState(false);
   const [checkoutKey, setCheckoutKey] = useState("");
   const [catalogRefresh, setCatalogRefresh] = useState(0);
+  const [bagAnimation, setBagAnimation] = useState(0);
   const [customer, setCustomer] = useState({ name: "", phone: "", email: "", location: "" });
   const [now, setNow] = useState(() => Date.now());
 
@@ -145,7 +146,7 @@ export default function StorePage() {
     const current = cart.find((item) => item.id === product.id)?.quantity ?? 0;
     const nextQuantity = Math.min(product.availableStock, current + quantity);
     const next = cart.some((item) => item.id === product.id) ? cart.map((item) => item.id === product.id ? { ...item, quantity: nextQuantity } : item) : [...cart, { ...product, quantity: nextQuantity }];
-    try { await syncReservation(next); setNotice(`${product.name} quedó reservado en tu carrito.`); } catch { /* message already visible */ }
+    try { await syncReservation(next); setNotice(`${product.name} quedó reservado en tu carrito.`); setBagAnimation((value) => value + 1); } catch { /* message already visible */ }
   }
 
   async function changeQuantity(item: CartLine, delta: number) {
@@ -189,7 +190,7 @@ export default function StorePage() {
   }
   async function copyOrderNumber() { if (!order) return; try { await navigator.clipboard.writeText(order.number); setCopiedOrder(true); window.setTimeout(() => setCopiedOrder(false), 1800); } catch { setWhatsappError("No pudimos copiar el número de pedido."); } }
   return <div className={styles.storeShell}>
-    <StoreHeader cartCount={cartCount} query={query} onHome={() => navigate("home")} onCatalog={() => { navigate("home"); setTimeout(() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" }), 20); }} onStory={() => { navigate("home"); setTimeout(() => document.getElementById("historia")?.scrollIntoView({ behavior: "smooth" }), 20); }} onCart={() => navigate("cart")} onQueryChange={(value) => { setQuery(value); if (view !== "home") navigate("home"); }} />
+    <StoreHeader cartCount={cartCount} animationTrigger={bagAnimation} query={query} onHome={() => navigate("home")} onCatalog={() => { navigate("home"); setTimeout(() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" }), 20); }} onStory={() => { navigate("home"); setTimeout(() => document.getElementById("historia")?.scrollIntoView({ behavior: "smooth" }), 20); }} onCart={() => navigate("cart")} onQueryChange={(value) => { setQuery(value); if (view !== "home") navigate("home"); }} />
     {notice && <div className={styles.notice} role="status">{notice}<button onClick={() => setNotice("")} aria-label="Cerrar aviso">×</button></div>}
     {error && <div className={styles.error} role="alert">{error}<button onClick={() => setError("")} aria-label="Cerrar error">×</button></div>}
     {view === "home" && <>
@@ -205,6 +206,7 @@ export default function StorePage() {
 
 type StoreHeaderProps = {
   cartCount: number;
+  animationTrigger: number;
   query: string;
   onHome: () => void;
   onCatalog: () => void;
@@ -213,7 +215,7 @@ type StoreHeaderProps = {
   onQueryChange: (value: string) => void;
 };
 
-function StoreHeader({ cartCount, query, onHome, onCatalog, onStory, onCart, onQueryChange }: StoreHeaderProps) {
+function StoreHeader({ cartCount, animationTrigger, query, onHome, onCatalog, onStory, onCart, onQueryChange }: StoreHeaderProps) {
   return <header className={`${styles.header} ${styles.publicHeader}`}>
     <a className={styles.logo} href="/tienda" onClick={(event) => { event.preventDefault(); onHome(); }} aria-label="KHORA, volver al inicio"><span className={styles.wordmark}>KHORA</span></a>
     <nav aria-label="Store navigation">
@@ -223,7 +225,7 @@ function StoreHeader({ cartCount, query, onHome, onCatalog, onStory, onCart, onQ
     </nav>
     <div className={styles.headerActions}>
       <label className={styles.search}><span aria-hidden="true">&#8981;</span><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar" aria-label="Buscar productos" /></label>
-      <button className={`${styles.textAction} ${styles.bagAction}`} onClick={onCart} aria-label="Abrir bolsa"><svg className={styles.bagIcon} viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8.5h13l1 11h-15l1-11Z" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M9 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg><span>Bolsa {cartCount ? `(${cartCount})` : ""}</span></button>
+      <button className={`${styles.textAction} ${styles.bagAction}`} onClick={onCart} aria-label="Abrir bolsa"><span key={animationTrigger} className={`${styles.bagAnimationFrame} ${animationTrigger ? styles.bagAnimating : ""}`}><span className={styles.bagIconWrap}><svg className={styles.bagIcon} viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8.5h13l1 11h-15l1-11Z" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M9 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg><span className={styles.bagFill} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 8.5h13l1 11h-15l1-11Z" fill="currentColor" /><path d="M9 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="var(--khora-green-deep)" strokeWidth="1.5" /></svg></span></span><span className={styles.bagLabel}>Bolsa {cartCount ? `(${cartCount})` : ""}</span></span></button>
     </div>
   </header>;
 }

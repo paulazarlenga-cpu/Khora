@@ -106,3 +106,40 @@
   .availability{margin:20px 0 18px}
   .accordion{margin-top:18px}
 }
+
+
+/* Bag interaction feedback. */
+.bagAction { position:relative; }
+.bagAnimationFrame { display:inline-flex; align-items:center; gap:8px; transform:translateY(0); transition:transform .25s ease; }
+.bagAction:hover .bagAnimationFrame { transform:translateY(-1px); }
+.bagIconWrap { position:relative; width:17px; height:19px; display:block; flex:none; transform-origin:center; }
+.bagIcon { position:absolute; inset:0; z-index:1; width:100%; height:100%; display:block; }
+.bagFill { position:absolute; inset:0; z-index:0; display:block; color:var(--khora-green); clip-path:inset(100% 0 0 0); }
+.bagFill svg { width:100%; height:100%; display:block; }
+.bagAnimating .bagIconWrap { animation:bagReact .58s cubic-bezier(.22,1,.36,1) both; }
+.bagAnimating .bagFill { animation:bagFillRise 1.25s cubic-bezier(.22,1,.36,1) both; }
+.bagAnimating .bagLabel { animation:bagLabelReact .42s ease-out both; }
+@keyframes bagFillRise {
+  0%,12% { clip-path:inset(100% 0 0 0); }
+  62% { clip-path:inset(0 0 0 0); }
+  78% { clip-path:inset(0 0 0 0); }
+  100% { clip-path:inset(100% 0 0 0); }
+}
+@keyframes bagReact {
+  0% { transform:scale(1) rotate(0deg); }
+  30% { transform:scale(1.1) rotate(-4deg); }
+  55% { transform:scale(1.06) rotate(3deg); }
+  75% { transform:scale(.99) rotate(-1deg); }
+  100% { transform:scale(1) rotate(0deg); }
+}
+@keyframes bagLabelReact {
+  0% { opacity:1; transform:translateY(0); }
+  35% { opacity:.82; transform:translateY(-2px); }
+  100% { opacity:1; transform:translateY(0); }
+}
+@media (prefers-reduced-motion:reduce) {
+  .bagAnimationFrame { transition:none; }
+  .bagAnimating .bagIconWrap,
+  .bagAnimating .bagFill,
+  .bagAnimating .bagLabel { animation:none; }
+}
