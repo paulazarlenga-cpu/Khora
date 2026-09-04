@@ -93,3 +93,9 @@
 .bagIcon{width:17px;height:17px;display:block;flex:none}
 @media (min-width:851px){.heroImage{align-self:start;height:min(75vh,650px)}}
 .heroMeta{display:none!important}
+@media (min-width:851px){
+  .catalog{padding-top:64px}
+  .sectionHeading{margin-bottom:30px}
+  .filters{padding:12px 0;margin-bottom:28px}
+  .cardVisual{aspect-ratio:1/0.9}
+}
