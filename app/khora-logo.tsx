@@ -1,6 +1,6 @@
 import type { ImgHTMLAttributes } from "react";
 
-export type KhoraLogoVariant = "full" | "horizontal" | "icon";
+export type KhoraLogoVariant = "full" | "horizontal" | "wordmark" | "icon";
 export type KhoraLogoSize = "sm" | "md" | "lg";
 export type KhoraLogoTheme = "green" | "white";
 
@@ -20,6 +20,10 @@ const logoSources: Record<KhoraLogoVariant, Record<KhoraLogoTheme, string>> = {
   horizontal: {
     green: "/brand/khora-logo-horizontal.svg",
     white: "/brand/khora-logo-horizontal-white.svg",
+  },
+  wordmark: {
+    green: "/brand/khora-wordmark.svg",
+    white: "/brand/khora-wordmark-white.svg",
   },
   icon: {
     green: "/brand/khora-icon.svg",
