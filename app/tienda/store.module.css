@@ -648,3 +648,27 @@
     font-size: 48px;
   }
 }
+/* Ancho intrínseco de los botones de carrito: evita overflow en tarjetas estrechas. */
+.addButton,
+.addButtonLink,
+.addButtonText,
+.addButtonTextTrack {
+  min-width: 0;
+}
+
+.addButton,
+.addButtonLink,
+.addButtonText {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.addButtonTextTrack {
+  width: 100%;
+}
+
+@media (max-width: 480px) {
+  .addButtonLink .addButtonTextTrack > span {
+    letter-spacing: .06em;
+  }
+}
