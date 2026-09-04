@@ -92,3 +92,4 @@
 .publicHeader{display:flex!important}
 .bagIcon{width:17px;height:17px;display:block;flex:none}
 @media (min-width:851px){.heroImage{align-self:start;height:min(75vh,650px)}}
+.heroMeta{display:none!important}
