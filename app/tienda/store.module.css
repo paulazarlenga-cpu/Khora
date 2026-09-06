@@ -751,3 +751,178 @@
   width: 100%;
   text-align: center;
 }
+
+/* Footer editorial KHORA: cuatro zonas, aire amplio y navegación accesible. */
+.footer {
+  display: block;
+  max-width: none;
+  margin: 0;
+  padding: 88px clamp(32px, 6vw, 120px) 32px;
+  background: var(--khora-green-deep);
+  color: var(--khora-ivory);
+}
+
+.footerGrid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1.9fr) repeat(3, minmax(150px, 1fr));
+  gap: clamp(28px, 5vw, 88px);
+  align-items: start;
+}
+
+.footerBrand {
+  padding-top: 13px;
+}
+
+.footer a.footerBrandLink {
+  display: inline-flex;
+  color: var(--khora-ivory);
+  text-decoration: none;
+  font-size: inherit;
+}
+
+.footerWordmark {
+  color: var(--khora-ivory);
+  font: 400 clamp(32px, 3vw, 44px)/1 var(--display-font);
+  letter-spacing: .2em;
+}
+
+.footerBrand p {
+  margin: 18px 0 0;
+  color: rgba(245, 241, 233, .76);
+  font: 18px/1.5 var(--display-font);
+}
+
+.footerNav {
+  display: grid;
+  align-content: start;
+  gap: 13px;
+}
+
+.footerNav h2 {
+  margin: 0 0 8px;
+  color: var(--khora-ivory);
+  font: 600 11px/1 var(--ui-font);
+  letter-spacing: .17em;
+  text-transform: uppercase;
+}
+
+.footerNav a,
+.footerLinkPending {
+  position: relative;
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  color: rgba(245, 241, 233, .82);
+  font: 16px/1.35 var(--ui-font);
+  text-decoration: none;
+  transition: color .25s ease, opacity .25s ease;
+}
+
+.footerNav a::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -4px;
+  left: 0;
+  height: 1px;
+  background: var(--khora-sand);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform .25s ease;
+}
+
+.footerNav a:hover,
+.footerNav a:focus-visible {
+  color: var(--khora-ivory);
+}
+
+.footerNav a:hover::after,
+.footerNav a:focus-visible::after {
+  transform: scaleX(1);
+}
+
+.footerLinkPending {
+  color: rgba(245, 241, 233, .62);
+}
+
+.footerSocialLink {
+  align-items: center;
+  gap: 14px;
+}
+
+.footerNav a.footerSocialLink {
+  display: inline-flex;
+}
+
+.footerSocialIcon {
+  width: 24px;
+  height: 24px;
+  flex: none;
+}
+
+.footer a.footerBrandLink:focus-visible,
+.footerNav a:focus-visible {
+  outline: 1px solid var(--khora-sand);
+  outline-offset: 5px;
+}
+
+.footer > div.footerBottom {
+  display: block;
+  margin-top: 64px;
+  padding-top: 27px;
+  border-top: 1px solid rgba(245, 241, 233, .24);
+}
+
+.footer > div.footerBottom > span {
+  color: rgba(245, 241, 233, .78);
+  font: 13px/1 var(--ui-font);
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 850px) {
+  .footer {
+    padding-top: 72px;
+  }
+
+  .footerGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 50px 42px;
+  }
+
+  .footerBrand {
+    grid-column: 1 / -1;
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .footer {
+    padding: 64px 24px 28px;
+  }
+
+  .footerGrid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+
+  .footerBrand {
+    grid-column: auto;
+  }
+
+  .footerNav a,
+  .footerLinkPending {
+    font-size: 16px;
+  }
+
+  .footer > div.footerBottom {
+    margin-top: 52px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .footerNav a,
+  .footerNav a::after {
+    transition: none;
+  }
+}

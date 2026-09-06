@@ -306,7 +306,50 @@ function Confirmation({ order, now, configured, whatsappError, copiedOrder, onCo
   return <main className={styles.confirmation}><div className={styles.confirmMark}>{closed ? "!" : "✓"}</div><p className={styles.eyebrow}>KHORA TIENDA</p><h1>{closed ? (cancelled ? "Pedido cancelado" : "Pedido vencido") : "Pedido generado"}</h1><p className={styles.confirmLead}>{closed ? (cancelled ? <>El pedido <strong>{order.number}</strong> ya no está activo.</> : <>El pedido <strong>{order.number}</strong> venció y ya no conserva la reserva.</>) : <>Tu pedido <strong>{order.number}</strong> fue generado correctamente.</>}</p><div className={styles.confirmCard}><div><span>Pedido</span><strong>{order.number}</strong><button className={styles.copyOrder} onClick={onCopyOrder}>{copiedOrder ? "Copiado" : `Copiar ${order.number}`}</button></div><div><span>Total</span><strong>{money(order.totalCents)}</strong></div><div><span>{state === "PAID" ? "Estado" : "Reserva"}</span><strong>{reservationLabel}</strong></div></div>{closed ? <p className={styles.confirmCopy}>{cancelled ? "No vuelvas a abrir WhatsApp con este pedido. Si necesitás comprar, generá un pedido nuevo." : "Volvé a generar uno para verificar stock y precios actuales."}</p> : <p className={styles.confirmCopy}>Tus productos quedaron reservados mientras coordinamos el pago y la entrega.</p>}{!closed && <button className={`${styles.primary} ${styles.whatsappButton}`} onClick={onWhatsApp}>Continuar por WhatsApp <span>→</span></button>}{whatsappError && <p className={styles.whatsappError} role="alert">{whatsappError}</p>}{!configured && !closed && <p className={styles.configHint}>El pedido ya existe. WhatsApp todavía no está configurado; podés coordinarlo desde KHORA Administración.</p>}<button className={styles.linkButton} onClick={onBack}>Volver a la tienda</button></main>;
 }
 
-function Footer() { return <footer className={styles.footer}><div><span className={styles.footerWordmark}>KHORA</span><p>Objetos para habitar despacio.</p></div><div><span>KHORA Tienda</span><a href="#catalogo">Colecciones</a><a href="#historia">Nosotros</a><a href="mailto:hola@khora.com">Contacto</a></div><small>© {new Date().getFullYear()} KHORA</small></footer>; }
+function FooterLink({ href, children, external = false }: { href?: string; children: string; external?: boolean }) {
+  if (!href) return <span className={styles.footerLinkPending} aria-disabled="true">{children}</span>;
+  return <a href={href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>{children}</a>;
+}
+
+function InstagramIcon() {
+  return <svg className={styles.footerSocialIcon} viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="17.4" cy="6.7" r="1" fill="currentColor" /></svg>;
+}
+
+function FooterSocialLink({ href }: { href?: string }) {
+  const content = <><InstagramIcon /><span>Instagram</span></>;
+  if (!href) return <span className={styles.footerSocialLink} aria-disabled="true">{content}</span>;
+  return <a className={styles.footerSocialLink} href={href} target="_blank" rel="noreferrer" aria-label="KHORA en Instagram">{content}</a>;
+}
+
+function Footer() {
+  const instagramUrl = process.env.NEXT_PUBLIC_KHORA_INSTAGRAM_URL?.trim();
+  return <footer className={styles.footer}>
+    <div className={styles.footerGrid}>
+      <div className={styles.footerBrand}>
+        <a className={styles.footerBrandLink} href="/tienda" aria-label="KHORA, volver al inicio"><span className={styles.footerWordmark}>KHORA</span></a>
+        <p>Objetos para habitar despacio.</p>
+      </div>
+      <nav className={styles.footerNav} aria-label="Enlaces de KHORA Tienda">
+        <h2>KHORA Tienda</h2>
+        <FooterLink href="/tienda#catalogo">Colecciones</FooterLink>
+        <FooterLink href="/tienda#catalogo">Todos los productos</FooterLink>
+        <FooterLink href="/tienda#historia">Nosotros</FooterLink>
+        <FooterLink href="mailto:hola@khora.com">Contacto</FooterLink>
+      </nav>
+      <nav className={styles.footerNav} aria-label="Ayuda">
+        <h2>Ayuda</h2>
+        <FooterLink>Guía de aromas</FooterLink>
+        <FooterLink>Cómo usar KHORA</FooterLink>
+        <FooterLink>Mayorista</FooterLink>
+      </nav>
+      <nav className={styles.footerNav} aria-label="Redes sociales">
+        <h2>Seguinos</h2>
+        <FooterSocialLink href={instagramUrl || undefined} />
+      </nav>
+    </div>
+    <div className={styles.footerBottom}><span>© 2026 KHORA</span></div>
+  </footer>;
+}
 
 
 
