@@ -247,7 +247,7 @@ async function resolveStoreClient(tx: KhoraTransaction, details: { name: string;
     const duplicateNote = emailConflict
       ? "El correo ingresado desde KHORA Tienda ya pertenece a otro cliente. Revisar posible duplicado."
       : asString(phoneMatch.duplicate_note) || null;
-    await tx.prepare(`UPDATE clients SET active=TRUE,
+    await tx.prepare(`UPDATE clients SET active=1,
       name=CASE WHEN NULLIF(TRIM(name),'') IS NULL THEN ? ELSE name END,
       phone=CASE WHEN NULLIF(TRIM(phone),'') IS NULL THEN ? ELSE phone END,
       phone_normalized=?,store_phone_normalized=?,
