@@ -1231,3 +1231,65 @@
 .cartPage > * { position: relative; z-index: 1; }
 .cartEmptyPanel::before { z-index: 0; }
 .cartEmptyPanel > * { position: relative; z-index: 1; }
+/* Ajuste de encuadre del carrito vacío: todo el bloque entra entre los límites de la sección. */
+.cartPage .pageTitle {
+  margin-top: 32px;
+  margin-bottom: 18px;
+}
+
+.cartEmptyPanel {
+  min-height: 300px;
+  padding: 30px 32px 20px;
+}
+
+.cartEmptyArtwork {
+  width: 120px;
+  height: 88px;
+  margin-bottom: 4px;
+}
+
+.cartEmptyPanel h2 {
+  margin-bottom: 5px;
+}
+
+.cartEmptyCta {
+  margin-top: 16px;
+}
+
+.cartEmptyDivider {
+  width: min(220px, 100%);
+  margin-top: 22px;
+}
+
+@media (max-width: 850px) {
+  .cartPage .pageTitle {
+    margin-top: 32px;
+    margin-bottom: 18px;
+  }
+
+  .cartEmptyPanel {
+    min-height: 300px;
+    padding-top: 28px;
+  }
+}
+
+@media (max-width: 480px) {
+  .cartPage .pageTitle {
+    margin-top: 30px;
+    margin-bottom: 18px;
+  }
+
+  .cartEmptyPanel {
+    min-height: 295px;
+    padding: 28px 18px 19px;
+  }
+
+  .cartEmptyArtwork {
+    width: 118px;
+    height: 86px;
+  }
+
+  .cartEmptyDivider {
+    margin-top: 20px;
+  }
+}
