@@ -73,6 +73,7 @@ test("12. el checkout inserta el flag de fabricación con el tipo de la base y e
   assert.match(migration, /requires_manufacturing integer not null default 0/);
   assert.match(route, /requires_manufacturing\) VALUES\(\?,\?,\?,\?,\?,\?,0\)/);
   assert.match(route, /UPDATE clients SET active=1/);
+  assert.match(route, /cancelled_at=COALESCE\(cancelled_at,CURRENT_TIMESTAMP::text\)/);
   assert.doesNotMatch(route, /requires_manufacturing\) VALUES\(\?,\?,\?,\?,\?,\?,FALSE\)/);
   assert.match(route, /\[KHORA Tienda\] request failed/);
   assert.match(route, /requestId/);
