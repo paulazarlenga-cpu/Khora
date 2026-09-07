@@ -1784,3 +1784,213 @@
     animation: none;
   }
 }
+/* Productos más elegidos: cinta editorial infinita, basada en los productos reales de la tienda. */
+.bestSellers {
+  position: relative;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 104px 0 116px;
+  overflow: hidden;
+  border-top: 1px solid rgba(35, 76, 60, .12);
+  background: var(--khora-ivory);
+}
+
+.bestSellersHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 48px;
+  padding: 0 clamp(28px, 7vw, 112px);
+}
+
+.bestSellersHeading .eyebrow { margin-bottom: 18px; }
+.bestSellersHeading h2 {
+  margin: 0;
+  color: var(--khora-green);
+  font: 400 clamp(42px, 5vw, 68px)/.98 var(--display-font);
+  letter-spacing: -.06em;
+}
+.bestSellersHeading > p {
+  max-width: 330px;
+  margin: 0 0 4px;
+  color: var(--khora-text-muted);
+  font: 17px/1.55 var(--display-font);
+}
+.bestSellersViewport {
+  position: relative;
+  margin-top: 52px;
+  overflow: hidden;
+  perspective: 1300px;
+  touch-action: pan-y;
+  cursor: grab;
+}
+.bestSellersViewport:active { cursor: grabbing; }
+.bestSellersRail {
+  display: flex;
+  width: max-content;
+  gap: clamp(18px, 2.1vw, 30px);
+  padding: 0 clamp(28px, 7vw, 112px);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.bestSellerCard {
+  flex: 0 0 clamp(200px, 17.2vw, 260px);
+  min-width: 0;
+  transform: rotateY(var(--best-seller-tilt, 0deg)) scale(var(--best-seller-scale, 1));
+  transform-origin: center center;
+  backface-visibility: hidden;
+  transition: transform .35s ease;
+}
+.bestSellerVisual {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: var(--khora-beige);
+  cursor: pointer;
+}
+.bestSellerVisual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform .45s cubic-bezier(.2, .65, .25, 1);
+}
+.bestSellerVisual:hover img,
+.bestSellerVisual:focus-visible img { transform: scale(1.025); }
+.bestSellerRank {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 1;
+  padding: 7px 9px;
+  color: var(--khora-green);
+  background: rgba(245, 241, 233, .9);
+  font: 10px/1 var(--ui-font);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.bestSellerReveal {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  z-index: 1;
+  padding: 10px 13px;
+  color: var(--khora-green);
+  background: var(--khora-ivory);
+  font: 9px/1 var(--ui-font);
+  letter-spacing: .13em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, 6px);
+  transition: opacity .28s ease, transform .28s ease;
+}
+.bestSellerReveal span { margin-left: 8px; font-size: 15px; }
+.bestSellerVisual:hover .bestSellerReveal,
+.bestSellerVisual:focus-visible .bestSellerReveal { opacity: 1; transform: translate(-50%, 0); }
+.bestSellerBody { padding: 17px 2px 0; }
+.bestSellerFeatured {
+  margin: 0 0 8px;
+  color: var(--khora-sand);
+  font: 600 9px/1 var(--ui-font);
+  letter-spacing: .17em;
+  text-transform: uppercase;
+}
+.bestSellerName {
+  display: block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  color: var(--khora-green);
+  background: none;
+  font: 400 24px/1.15 var(--display-font);
+  letter-spacing: -.03em;
+  text-align: left;
+  cursor: pointer;
+}
+.bestSellerName:hover,
+.bestSellerName:focus-visible { color: var(--khora-sand); }
+.bestSellerMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 13px;
+}
+.bestSellerMeta strong { color: var(--khora-text); font: 500 14px/1 var(--ui-font); }
+.bestSellerMeta span { color: var(--khora-green); font: 10px/1.2 var(--ui-font); }
+.bestSellerMeta .stockOut { color: #b05247; }
+.bestSellersFade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  width: clamp(36px, 8vw, 124px);
+  pointer-events: none;
+}
+.bestSellersFadeLeft { left: 0; background: linear-gradient(90deg, var(--khora-ivory), rgba(245, 241, 233, 0)); }
+.bestSellersFadeRight { right: 0; background: linear-gradient(270deg, var(--khora-ivory), rgba(245, 241, 233, 0)); }
+.bestSellersArrow {
+  position: absolute;
+  top: 38%;
+  z-index: 3;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(203, 179, 148, .52);
+  border-radius: 50%;
+  color: var(--khora-green);
+  background: rgba(245, 241, 233, .9);
+  font: 21px/1 var(--display-font);
+  cursor: pointer;
+  transition: background .2s ease, color .2s ease, transform .2s ease;
+}
+.bestSellersArrow:hover,
+.bestSellersArrow:focus-visible { color: var(--khora-ivory); background: var(--khora-green); transform: scale(1.04); }
+.bestSellersArrowLeft { left: clamp(12px, 2vw, 30px); }
+.bestSellersArrowRight { right: clamp(12px, 2vw, 30px); }
+.bestSellersEmpty {
+  margin: 48px clamp(28px, 7vw, 112px) 0;
+  color: var(--khora-text-muted);
+  font: 16px/1.5 var(--display-font);
+}
+@media (max-width: 850px) {
+  .bestSellers { padding: 82px 0 94px; }
+  .bestSellersHeading { display: grid; align-items: start; gap: 18px; padding: 0 22px; }
+  .bestSellersHeading h2 { font-size: clamp(42px, 11vw, 64px); }
+  .bestSellersHeading > p { max-width: 310px; font-size: 16px; }
+  .bestSellersViewport { margin-top: 38px; }
+  .bestSellersRail { gap: 16px; padding: 0 22px; }
+  .bestSellerCard { flex-basis: calc((100vw - 60px) / 1.28); }
+  .bestSellerName { font-size: 22px; }
+  .bestSellersArrow { width: 34px; height: 34px; }
+}
+@media (max-width: 480px) {
+  .bestSellers { padding: 68px 0 80px; }
+  .bestSellersHeading { padding: 0 22px; }
+  .bestSellersHeading .eyebrow { margin-bottom: 14px; }
+  .bestSellersViewport { margin-top: 32px; }
+  .bestSellersRail { gap: 14px; padding: 0 22px; }
+  .bestSellerCard { flex-basis: calc((100vw - 44px) / 1.25); }
+  .bestSellerRank { top: 11px; left: 11px; padding: 6px 7px; font-size: 9px; }
+  .bestSellerBody { padding-top: 14px; }
+  .bestSellerName { font-size: 21px; }
+  .bestSellerMeta { display: block; margin-top: 10px; }
+  .bestSellerMeta span { display: block; margin-top: 7px; }
+  .bestSellersArrow { top: 35%; width: 31px; height: 31px; font-size: 18px; }
+  .bestSellersArrowLeft { left: 8px; }
+  .bestSellersArrowRight { right: 8px; }
+  .desktopBreak { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bestSellerCard,
+  .bestSellerVisual img,
+  .bestSellerReveal,
+  .bestSellersArrow { transition: none; }
+}

@@ -17,6 +17,7 @@ type StoreProduct = {
   availableStock: number;
   imagePath: string | null;
   published: boolean;
+  unitsSold: number;
 };
 
 const db = () => khoraDb;
@@ -132,12 +133,14 @@ const cleanCartItems = (value: unknown): CartItemInput[] => {
 async function listStoreProducts(token = ""): Promise<StoreProduct[]> {
   const result = await db().prepare(`SELECT p.id,cb.code,cb.name,COALESCE(cb.description,'') description,COALESCE(c.name,'') category,p.type,p.sale_price_cents,p.current_stock,
       COALESCE(stock.available_stock,p.current_stock) available_stock,p.store_published,
-      (SELECT value_json FROM app_settings WHERE key='product_image_'||p.id) image_path
+      (SELECT value_json FROM app_settings WHERE key='product_image_'||p.id) image_path,
+      (SELECT COALESCE(SUM(CASE WHEN s.status<>'CANCELLED' THEN si.quantity ELSE 0 END),0)
+        FROM sale_items si JOIN sales s ON s.id=si.sale_id WHERE si.product_id=p.id) units_sold
     FROM products p JOIN code_base cb ON cb.id=p.code_base_id LEFT JOIN categories c ON c.id=p.category_id
     LEFT JOIN khora_available_product_stock(?) stock ON stock.product_id=p.id
     WHERE p.active=1 AND p.store_published=TRUE AND p.sale_price_cents>0 ORDER BY cb.name`).bind(token || null).all<Row>();
   return result.results.map((row) => ({
-    id: asNumber(row.id), code: asString(row.code), name: asString(row.name), description: asString(row.description), category: asString(row.category) || "Colección KHORA", type: asString(row.type), priceCents: asNumber(row.sale_price_cents), stock: asNumber(row.current_stock), availableStock: asNumber(row.available_stock), imagePath: parseImagePath(row.image_path), published: Boolean(row.store_published),
+    id: asNumber(row.id), code: asString(row.code), name: asString(row.name), description: asString(row.description), category: asString(row.category) || "Colección KHORA", type: asString(row.type), priceCents: asNumber(row.sale_price_cents), stock: asNumber(row.current_stock), availableStock: asNumber(row.available_stock), imagePath: parseImagePath(row.image_path), published: Boolean(row.store_published), unitsSold: asNumber(row.units_sold),
   }));
 }
 

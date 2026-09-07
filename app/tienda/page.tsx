@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import styles from "./store.module.css";
 import { buildStoreOrderWhatsAppMessage, buildWhatsAppLink } from "../khora-whatsapp";
 
 type View = "home" | "product" | "cart" | "details" | "confirmation";
-type Product = { id: number; code: string; name: string; description: string; category: string; type: string; priceCents: number; stock: number; availableStock: number; imagePath: string | null; published: boolean };
+type Product = { id: number; code: string; name: string; description: string; category: string; type: string; priceCents: number; stock: number; availableStock: number; imagePath: string | null; published: boolean; unitsSold?: number };
 type CartLine = Product & { quantity: number };
 type StoreOrder = { number: string; expiresAt: string; totalCents: number; status: string; paymentStatus: string; customer: { name: string; phone: string; email: string; location: string }; items: Array<{ productId: number; name: string; quantity: number; priceCents: number; lineTotalCents: number }> };
 type CreateOrderResponse = {
@@ -75,6 +75,12 @@ export default function StorePage() {
 
   const categories = useMemo(() => ["Todas", ...Array.from(new Set(products.map((product) => product.category).filter(Boolean)))], [products]);
   const filteredProducts = useMemo(() => products.filter((product) => (category === "Todas" || product.category === category) && `${product.name} ${product.category} ${product.description}`.toLowerCase().includes(query.toLowerCase().trim())), [products, category, query]);
+  const bestSellerProducts = useMemo(() => {
+    const bySales = [...products].sort((a, b) => (Number(b.unitsSold ?? 0) - Number(a.unitsSold ?? 0)) || (Number(b.availableStock) - Number(a.availableStock)) || a.name.localeCompare(b.name));
+    const historic = bySales.filter((product) => Number(product.unitsSold ?? 0) > 0);
+    const available = bySales.filter((product) => product.availableStock > 0 && Number(product.unitsSold ?? 0) <= 0);
+    return [...historic, ...available, ...bySales.filter((product) => !historic.includes(product) && !available.includes(product))].slice(0, 8);
+  }, [products]);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const cartTotal = cart.reduce((sum, item) => sum + item.quantity * item.priceCents, 0);
   const selectedProduct = products.find((product) => product.id === selectedProductId) ?? cart.find((product) => product.id === selectedProductId);
@@ -220,7 +226,7 @@ export default function StorePage() {
     {notice && <div className={styles.notice} role="status">{notice}<button onClick={() => setNotice("")} aria-label="Cerrar aviso">×</button></div>}
     {error && <div className={styles.error} role="alert">{error}<button onClick={() => setError("")} aria-label="Cerrar error">×</button></div>}
     {view === "home" && <>
-      <main><section className={styles.hero} aria-labelledby="store-hero-title"><div className={styles.heroCopy}><div className={styles.eyebrowRow}><p className={styles.eyebrow}>OBJETOS PARA HABITAR DESPACIO</p><span aria-hidden="true" /></div><h1 id="store-hero-title">Lo cotidiano,<br /><em>con intención.</em></h1><p>Pequeños objetos hechos para acompañar tu casa y tus momentos de todos los días.</p><button className={`${styles.primary} ${styles.discoverButton}`} onClick={() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" })}><span className={styles.discoverSweep} aria-hidden="true" /><span className={styles.discoverText}>Descubrir KHORA</span><span className={styles.discoverArrow} aria-hidden="true">→</span></button><div className={styles.heroMeta}><span>01 <i aria-hidden="true" /> 03</span><span>SCROLLÉA <b aria-hidden="true">↓</b></span></div></div><div className={styles.heroImage}><img src="/khora-store-hero.png" alt="Difusor de aroma sobre piedra y cerámica, rodeado de hojas" /><span className={styles.heroImageNote}>AROMAS · OBJETOS · HOGAR</span></div></section><section className={styles.catalog} id="catalogo"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>LA COLECCIÓN</p><h2>Elegidos para tu espacio</h2></div><p>Diseño simple, materiales nobles y una pausa para lo esencial.</p></div><div className={styles.filters}><div className={styles.categoryList}>{categories.map((item) => <button key={item} className={category === item ? styles.selectedFilter : ""} onClick={() => setCategory(item)}>{item}</button>)}</div><label className={styles.catalogSearch}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre…" aria-label="Buscar en el catálogo" /></label></div>{loading ? <p className={styles.empty}>Cargando la colección…</p> : error && !products.length ? <div className={styles.emptyPanel} role="alert"><h2>No pudimos cargar la colección</h2><p>Revisá tu conexión e intentá nuevamente.</p><button className={styles.primary} onClick={() => { setError(""); setCatalogRefresh((value) => value + 1); }}>Reintentar <span>→</span></button></div> : <div className={styles.grid}>{filteredProducts.map((product) => <ProductCard key={product.id} product={product} onOpen={() => navigate("product", product.id)} onAdd={() => addToCart(product)} disabled={saving} />)}</div>}{!loading && !error && !filteredProducts.length && <p className={styles.empty}>No encontramos productos con esa búsqueda.</p>}</section><section className={styles.story} id="historia"><div><p className={styles.eyebrow}>LA MIRADA KHORA</p><h2>Hecho para quedarse.</h2></div><p>Creamos objetos honestos, calmos y duraderos. Cada pieza encuentra su lugar cuando suma belleza sin pedir atención.</p><button className={styles.linkButton} onClick={() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" })}>Ver la colección <span>→</span></button></section><section className={styles.editorialBanner} aria-label="Manifiesto KHORA"><div><p className={styles.eyebrow}>UNA PAUSA EN CASA</p><h2>Una casa también<br />se recuerda<br /><em>por su aroma.</em></h2></div><p>Objetos sencillos para rituales que se vuelven parte de vos.</p></section><section className={styles.newsletter} aria-label="Novedades de KHORA"><div><p className={styles.eyebrow}>DE VEZ EN CUANDO</p><h2>Un poco de KHORA.</h2></div><div><p>Novedades, objetos y pequeñas historias para habitar despacio.</p><div className={styles.newsletterField}><input type="email" placeholder="Tu correo electrónico" aria-label="Tu correo electrónico" disabled /><button type="button" disabled aria-label="Suscribirse próximamente">→</button></div><small>Próximamente.</small></div></section></main><Footer /></>}
+      <main><section className={styles.hero} aria-labelledby="store-hero-title"><div className={styles.heroCopy}><div className={styles.eyebrowRow}><p className={styles.eyebrow}>OBJETOS PARA HABITAR DESPACIO</p><span aria-hidden="true" /></div><h1 id="store-hero-title">Lo cotidiano,<br /><em>con intención.</em></h1><p>Pequeños objetos hechos para acompañar tu casa y tus momentos de todos los días.</p><button className={`${styles.primary} ${styles.discoverButton}`} onClick={() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" })}><span className={styles.discoverSweep} aria-hidden="true" /><span className={styles.discoverText}>Descubrir KHORA</span><span className={styles.discoverArrow} aria-hidden="true">→</span></button><div className={styles.heroMeta}><span>01 <i aria-hidden="true" /> 03</span><span>SCROLLÉA <b aria-hidden="true">↓</b></span></div></div><div className={styles.heroImage}><img src="/khora-store-hero.png" alt="Difusor de aroma sobre piedra y cerámica, rodeado de hojas" /><span className={styles.heroImageNote}>AROMAS · OBJETOS · HOGAR</span></div></section><BestSellersSection products={bestSellerProducts} onOpen={(product) => navigate("product", product.id)} /><section className={styles.catalog} id="catalogo"><div className={styles.sectionHeading}><div><p className={styles.eyebrow}>LA COLECCIÓN</p><h2>Elegidos para tu espacio</h2></div><p>Diseño simple, materiales nobles y una pausa para lo esencial.</p></div><div className={styles.filters}><div className={styles.categoryList}>{categories.map((item) => <button key={item} className={category === item ? styles.selectedFilter : ""} onClick={() => setCategory(item)}>{item}</button>)}</div><label className={styles.catalogSearch}><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre…" aria-label="Buscar en el catálogo" /></label></div>{loading ? <p className={styles.empty}>Cargando la colección…</p> : error && !products.length ? <div className={styles.emptyPanel} role="alert"><h2>No pudimos cargar la colección</h2><p>Revisá tu conexión e intentá nuevamente.</p><button className={styles.primary} onClick={() => { setError(""); setCatalogRefresh((value) => value + 1); }}>Reintentar <span>→</span></button></div> : <div className={styles.grid}>{filteredProducts.map((product) => <ProductCard key={product.id} product={product} onOpen={() => navigate("product", product.id)} onAdd={() => addToCart(product)} disabled={saving} />)}</div>}{!loading && !error && !filteredProducts.length && <p className={styles.empty}>No encontramos productos con esa búsqueda.</p>}</section><section className={styles.story} id="historia"><div><p className={styles.eyebrow}>LA MIRADA KHORA</p><h2>Hecho para quedarse.</h2></div><p>Creamos objetos honestos, calmos y duraderos. Cada pieza encuentra su lugar cuando suma belleza sin pedir atención.</p><button className={styles.linkButton} onClick={() => document.getElementById("catalogo")?.scrollIntoView({ behavior: "smooth" })}>Ver la colección <span>→</span></button></section><section className={styles.editorialBanner} aria-label="Manifiesto KHORA"><div><p className={styles.eyebrow}>UNA PAUSA EN CASA</p><h2>Una casa también<br />se recuerda<br /><em>por su aroma.</em></h2></div><p>Objetos sencillos para rituales que se vuelven parte de vos.</p></section><section className={styles.newsletter} aria-label="Novedades de KHORA"><div><p className={styles.eyebrow}>DE VEZ EN CUANDO</p><h2>Un poco de KHORA.</h2></div><div><p>Novedades, objetos y pequeñas historias para habitar despacio.</p><div className={styles.newsletterField}><input type="email" placeholder="Tu correo electrónico" aria-label="Tu correo electrónico" disabled /><button type="button" disabled aria-label="Suscribirse próximamente">→</button></div><small>Próximamente.</small></div></section></main><Footer /></>}
     {view === "product" && selectedProduct && <ProductDetail product={selectedProduct} onBack={() => navigate("home")} onAdd={(quantity) => addToCart(selectedProduct, quantity)} disabled={saving} />}
     {view === "product" && !selectedProduct && !loading && <main className={styles.narrowPage}><div className={styles.emptyPanel}><h2>Este producto ya no está disponible</h2><p>Puede haber cambiado su disponibilidad o dejado de publicarse.</p><button className={styles.primary} onClick={() => navigate("home")}>Volver a la tienda <span>→</span></button></div></main>}
     {view === "cart" && <CartView cart={cart} total={cartTotal} expiresAt={expiresAt} expired={reservationExpired} saving={saving} onBack={() => navigate("home")} onChange={changeQuantity} onRemove={(item) => syncReservation(cart.filter((line) => line.id !== item.id))} onContinue={continueToDetails} />}
@@ -297,6 +303,180 @@ function AddToCartButton({ variant, onAdd, disabled = false }: AddToCartButtonPr
   </button>;
 }
 
+function BestSellersSection({ products, onOpen }: { products: Product[]; onOpen: (product: Product) => void }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const railRef = useRef<HTMLDivElement>(null);
+  const positionRef = useRef(0);
+  const loopWidthRef = useRef(0);
+  const cardStepRef = useRef(0);
+  const pausedRef = useRef(false);
+  const draggingRef = useRef(false);
+  const dragMovedRef = useRef(false);
+  const dragRef = useRef({ pointerId: -1, startX: 0, startPosition: 0 });
+  const frameRef = useRef<number | null>(null);
+  const lastTimeRef = useRef<number | null>(null);
+  const resumeTimerRef = useRef<number | null>(null);
+  const applyTransformRef = useRef<() => void>(() => undefined);
+  const updateTiltsRef = useRef<() => void>(() => undefined);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const doubledProducts = [...products, ...products];
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReducedMotion(media.matches);
+    update();
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    const rail = railRef.current;
+    if (!viewport || !rail || !products.length) return;
+    const speed = 22;
+    const normalize = () => {
+      const loopWidth = loopWidthRef.current;
+      if (!loopWidth) return;
+      while (positionRef.current >= loopWidth) positionRef.current -= loopWidth;
+      while (positionRef.current < 0) positionRef.current += loopWidth;
+    };
+    const cards = () => Array.from(rail.querySelectorAll<HTMLElement>("[data-best-seller-card]"));
+    const applyTransform = () => { rail.style.transform = `translate3d(${-positionRef.current}px, 0, 0)`; };
+    const updateTilts = () => {
+      const bounds = viewport.getBoundingClientRect();
+      const centerX = bounds.left + bounds.width / 2;
+      const half = Math.max(1, bounds.width / 2);
+      cards().forEach((card) => {
+        const cardBounds = card.getBoundingClientRect();
+        const offset = Math.max(-1, Math.min(1, (cardBounds.left + cardBounds.width / 2 - centerX) / half));
+        card.style.setProperty("--best-seller-tilt", `${-offset * (window.innerWidth <= 850 ? 4 : 8)}deg`);
+        card.style.setProperty("--best-seller-scale", `${1 - Math.abs(offset) * .018}`);
+      });
+    };
+    const measure = () => {
+      loopWidthRef.current = rail.scrollWidth / 2;
+      const first = rail.querySelector<HTMLElement>("[data-best-seller-card]");
+      const gap = Number.parseFloat(window.getComputedStyle(rail).gap || "0") || 0;
+      cardStepRef.current = (first?.getBoundingClientRect().width || 0) + gap;
+      normalize();
+      applyTransform();
+      updateTilts();
+    };
+    applyTransformRef.current = applyTransform;
+    updateTiltsRef.current = updateTilts;
+    measure();
+    const resizeObserver = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    resizeObserver?.observe(viewport);
+    resizeObserver?.observe(rail);
+    const onResize = () => measure();
+    window.addEventListener("resize", onResize);
+    const tick = (time: number) => {
+      if (lastTimeRef.current === null) lastTimeRef.current = time;
+      const dt = Math.min(.1, Math.max(0, (time - lastTimeRef.current) / 1000));
+      lastTimeRef.current = time;
+      if (!reducedMotion && !pausedRef.current && !draggingRef.current) {
+        positionRef.current += speed * dt;
+        normalize();
+        applyTransform();
+        updateTilts();
+      }
+      frameRef.current = window.requestAnimationFrame(tick);
+    };
+    if (!reducedMotion) frameRef.current = window.requestAnimationFrame(tick);
+    return () => {
+      if (frameRef.current !== null) window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", onResize);
+      applyTransformRef.current = () => undefined;
+      updateTiltsRef.current = () => undefined;
+    };
+  }, [products, reducedMotion]);
+
+  function scheduleResume(delay = 650) {
+    if (resumeTimerRef.current !== null) window.clearTimeout(resumeTimerRef.current);
+    resumeTimerRef.current = window.setTimeout(() => { pausedRef.current = false; lastTimeRef.current = null; }, delay);
+  }
+
+  function moveBy(direction: -1 | 1) {
+    if (!loopWidthRef.current) return;
+    pausedRef.current = true;
+    positionRef.current += direction * cardStepRef.current;
+    while (positionRef.current >= loopWidthRef.current) positionRef.current -= loopWidthRef.current;
+    while (positionRef.current < 0) positionRef.current += loopWidthRef.current;
+    applyTransformRef.current();
+    updateTiltsRef.current();
+    scheduleResume();
+  }
+
+  function handlePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!loopWidthRef.current || (event.target as HTMLElement).closest("[data-best-seller-arrow]")) return;
+    draggingRef.current = true;
+    dragMovedRef.current = false;
+    pausedRef.current = true;
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startPosition: positionRef.current };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handlePointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current || dragRef.current.pointerId !== event.pointerId) return;
+    if (Math.abs(event.clientX - dragRef.current.startX) > 6) { dragMovedRef.current = true; event.preventDefault(); }
+    positionRef.current = dragRef.current.startPosition - (event.clientX - dragRef.current.startX);
+    while (positionRef.current >= loopWidthRef.current) positionRef.current -= loopWidthRef.current;
+    while (positionRef.current < 0) positionRef.current += loopWidthRef.current;
+    applyTransformRef.current();
+    updateTiltsRef.current();
+  }
+
+  function handlePointerUp(event: ReactPointerEvent<HTMLDivElement>) {
+    if (!draggingRef.current || dragRef.current.pointerId !== event.pointerId) return;
+    draggingRef.current = false;
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    scheduleResume(900);
+  }
+
+  function handleClickCapture(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!dragMovedRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    dragMovedRef.current = false;
+  }
+
+  if (!products.length) return <section className={styles.bestSellers} aria-labelledby="best-sellers-title"><div className={styles.bestSellersHeading}><div><p className={styles.eyebrow}>LOS FAVORITOS DE KHORA</p><h2 id="best-sellers-title">Los más elegidos</h2></div><p>Aromas y objetos que ya forman parte de muchos espacios.</p></div><p className={styles.bestSellersEmpty}>{"Cargando los favoritos de KHORA…"}</p></section>;
+
+  return <section className={styles.bestSellers} aria-labelledby="best-sellers-title">
+    <div className={styles.bestSellersHeading}>
+      <div><p className={styles.eyebrow}>LOS FAVORITOS DE KHORA</p><h2 id="best-sellers-title">Los más elegidos</h2></div>
+      <p>Aromas y objetos que ya forman<br className={styles.desktopBreak} /> parte de muchos espacios.</p>
+    </div>
+    <div className={styles.bestSellersViewport} ref={viewportRef} onClickCapture={handleClickCapture} onMouseEnter={() => { if (!draggingRef.current) pausedRef.current = true; }} onMouseLeave={() => { if (!draggingRef.current) scheduleResume(300); }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
+      <div className={styles.bestSellersRail} ref={railRef}>
+        {doubledProducts.map((product, index) => <BestSellerCard key={`${product.id}-${index < products.length ? "original" : "duplicate"}`} product={product} rank={index % products.length} onOpen={() => onOpen(product)} />)}
+      </div>
+      <span className={`${styles.bestSellersFade} ${styles.bestSellersFadeLeft}`} aria-hidden="true" />
+      <span className={`${styles.bestSellersFade} ${styles.bestSellersFadeRight}`} aria-hidden="true" />
+      <button className={`${styles.bestSellersArrow} ${styles.bestSellersArrowLeft}`} type="button" onClick={() => moveBy(-1)} data-best-seller-arrow aria-label="Ver favoritos anteriores">←</button>
+      <button className={`${styles.bestSellersArrow} ${styles.bestSellersArrowRight}`} type="button" onClick={() => moveBy(1)} data-best-seller-arrow aria-label="Ver favoritos siguientes">→</button>
+    </div>
+  </section>;
+}
+
+function BestSellerCard({ product, rank, onOpen }: { product: Product; rank: number; onOpen: () => void }) {
+  const unavailable = product.availableStock <= 0;
+  const availability = unavailable ? "Sin stock" : product.availableStock <= 3 ? `Últimas ${formatQuantity(product.availableStock)}` : "Disponible";
+  return <article className={styles.bestSellerCard} data-best-seller-card>
+    <button className={styles.bestSellerVisual} type="button" onClick={onOpen} aria-label={`Ver ${product.name}`}>
+      <span className={styles.bestSellerRank}>N.º {rank + 1}</span>
+      <ProductImage product={product} alt="" />
+      <span className={styles.bestSellerReveal}>Ver producto <span aria-hidden="true">→</span></span>
+    </button>
+    <div className={styles.bestSellerBody}>
+      {rank === 0 && <p className={styles.bestSellerFeatured}>Más elegido</p>}
+      <button className={styles.bestSellerName} type="button" onClick={onOpen}>{product.name}</button>
+      <div className={styles.bestSellerMeta}><strong>{money(product.priceCents)}</strong><span className={unavailable ? styles.stockOut : styles.stock}>{availability}</span></div>
+    </div>
+  </article>;
+}
 function ProductCard({ product, onOpen, onAdd, disabled = false }: { product: Product; onOpen: () => void; onAdd: () => Promise<boolean>; disabled?: boolean }) {
   const unavailable = product.availableStock <= 0;
   return <article className={styles.card}><button className={styles.cardVisual} onClick={onOpen} aria-label={`Ver ${product.name}`}><ProductImage product={product} alt="" />{unavailable && <span className={styles.outOfStock}>Sin stock</span>}<span className={styles.cardReveal}>Ver producto <span aria-hidden="true">→</span></span></button><div className={styles.cardBody}><p className={styles.cardCategory}>{product.category}</p><h3>{product.name}</h3><div className={styles.cardMeta}><strong>{money(product.priceCents)}</strong><span className={unavailable ? styles.stockOut : styles.stock}>{unavailable ? "Sin stock" : product.availableStock <= 3 ? `Últimas ${formatQuantity(product.availableStock)}` : "Disponible"}</span></div>{unavailable ? <button className={styles.cardLink} onClick={onOpen} disabled>Ver producto <span>→</span></button> : <AddToCartButton variant="link" onAdd={onAdd} disabled={disabled} />}</div></article>;
