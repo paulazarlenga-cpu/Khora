@@ -251,8 +251,8 @@ async function resolveStoreClient(tx: KhoraTransaction, details: { name: string;
       name=CASE WHEN NULLIF(TRIM(name),'') IS NULL THEN ? ELSE name END,
       phone=CASE WHEN NULLIF(TRIM(phone),'') IS NULL THEN ? ELSE phone END,
       phone_normalized=?,store_phone_normalized=?,
-      email=CASE WHEN NULLIF(TRIM(email),'') IS NULL AND ? IS NOT NULL THEN ? ELSE email END,
-      address=CASE WHEN NULLIF(TRIM(address),'') IS NULL AND ? IS NOT NULL THEN ? ELSE address END,
+      email=CASE WHEN NULLIF(TRIM(email),'') IS NULL AND ?::text IS NOT NULL THEN ? ELSE email END,
+      address=CASE WHEN NULLIF(TRIM(address),'') IS NULL AND ?::text IS NOT NULL THEN ? ELSE address END,
       possible_duplicate=CASE WHEN ? THEN TRUE ELSE possible_duplicate END,
       duplicate_note=CASE WHEN ? THEN ? ELSE duplicate_note END,
       origin=COALESCE(NULLIF(origin,''),'MANUAL'),updated_at=CURRENT_TIMESTAMP WHERE id=?`)
