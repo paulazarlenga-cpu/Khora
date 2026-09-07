@@ -983,3 +983,251 @@
     transition: none;
   }
 }
+
+/* Carrito vacío: composición editorial aislada de las demás vistas de la tienda. */
+.cartPage {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.cartPage::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 170px;
+  left: -96px;
+  width: 285px;
+  height: 360px;
+  opacity: .28;
+  pointer-events: none;
+  filter: blur(1px);
+  transform: rotate(-19deg);
+  background:
+    radial-gradient(ellipse 22px 118px at 37% 29%, rgba(185, 178, 157, .24) 0 38%, transparent 40%),
+    radial-gradient(ellipse 22px 118px at 51% 48%, rgba(185, 178, 157, .18) 0 38%, transparent 40%),
+    radial-gradient(ellipse 21px 110px at 65% 67%, rgba(185, 178, 157, .15) 0 38%, transparent 40%);
+}
+
+.cartPage .pageTitle {
+  margin: 48px 0 29px;
+}
+
+.cartPage .pageTitle h1 {
+  font-size: clamp(42px, 4.5vw, 64px);
+  letter-spacing: -.05em;
+}
+
+.cartEmptyPanel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 800px;
+  min-height: 360px;
+  margin: 0 auto;
+  padding: 46px 34px 27px;
+  overflow: hidden;
+  border: 1px solid rgba(35, 76, 60, .17);
+  border-radius: 14px;
+  background: rgba(250, 247, 241, .55);
+  text-align: center;
+}
+
+.cartEmptyPanel::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  border-radius: 13px;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .2), transparent 55%);
+  pointer-events: none;
+}
+
+.cartEmptyArtwork {
+  width: 152px;
+  height: 112px;
+  margin: 0 auto 8px;
+  color: var(--khora-green);
+}
+
+.cartEmptyArtwork svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.cartEmptyHalo {
+  fill: rgba(215, 205, 187, .16);
+}
+
+.cartEmptyBag,
+.cartEmptyHandle,
+.cartEmptyBranch,
+.cartEmptyLeaf {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.45;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.cartEmptyBranch,
+.cartEmptyLeaf {
+  color: rgba(35, 76, 60, .72);
+  stroke-width: 1.05;
+}
+
+.cartEmptyPanel h2 {
+  position: relative;
+  margin: 0 0 8px;
+  color: var(--khora-green);
+  font: 400 clamp(27px, 3vw, 34px)/1.12 var(--display-font);
+  letter-spacing: -.035em;
+}
+
+.cartEmptyPanel > p {
+  position: relative;
+  margin: 0;
+  color: var(--khora-text-muted);
+  font: 400 14px/1.5 var(--ui-font);
+}
+
+.cartEmptyCta {
+  position: relative;
+  min-width: 215px;
+  margin-top: 24px;
+}
+
+.cartEmptyDivider {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(250px, 100%);
+  margin-top: 42px;
+  color: rgba(35, 76, 60, .5);
+}
+
+.cartEmptyDivider > span {
+  flex: 1 1 auto;
+  height: 1px;
+  background: rgba(35, 76, 60, .17);
+}
+
+.cartEmptyDivider svg {
+  width: 22px;
+  height: 26px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Aviso de reserva: compacto, cálido y coherente con el storefront. */
+.notice {
+  max-width: min(360px, calc(100vw - 48px));
+  padding: 12px 34px 12px 14px;
+  border: 1px solid rgba(35, 76, 60, .14);
+  border-left: 2px solid var(--khora-green);
+  border-radius: 2px;
+  background: rgba(255, 252, 246, .96);
+  color: var(--khora-text);
+  font: 400 12px/1.45 var(--ui-font);
+  box-shadow: 0 10px 24px rgba(32, 55, 43, .08);
+}
+
+.notice button {
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--khora-text-muted);
+  font-size: 14px;
+  line-height: 1;
+}
+
+@media (max-width: 850px) {
+  .cartPage .pageTitle {
+    margin-top: 40px;
+    margin-bottom: 25px;
+  }
+
+  .cartPage .pageTitle h1 {
+    font-size: clamp(39px, 9vw, 58px);
+  }
+
+  .cartEmptyPanel {
+    min-height: 340px;
+    padding: 42px 25px 25px;
+  }
+}
+
+@media (max-width: 480px) {
+  .cartPage {
+    padding-left: 18px;
+    padding-right: 18px;
+  }
+
+  .cartPage .pageTitle {
+    margin-top: 36px;
+    margin-bottom: 23px;
+  }
+
+  .cartPage .pageTitle h1 {
+    font-size: clamp(37px, 10vw, 48px);
+  }
+
+  .cartEmptyPanel {
+    width: 100%;
+    min-height: 325px;
+    padding: 37px 18px 22px;
+    border-radius: 12px;
+  }
+
+  .cartEmptyArtwork {
+    width: 132px;
+    height: 98px;
+    margin-bottom: 5px;
+  }
+
+  .cartEmptyPanel h2 {
+    font-size: 27px;
+  }
+
+  .cartEmptyPanel > p {
+    max-width: 260px;
+    font-size: 13px;
+  }
+
+  .cartEmptyCta {
+    width: min(100%, 260px);
+    margin-top: 22px;
+  }
+
+  .cartEmptyDivider {
+    margin-top: 34px;
+  }
+
+  .notice {
+    top: 80px;
+    right: 18px;
+    left: 18px;
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cartPage::before {
+    filter: none;
+  }
+}
+/* Mantener las decoraciones dentro de sus propias capas, detrás del contenido. */
+.cartPage::before { z-index: 0; }
+.cartPage > * { position: relative; z-index: 1; }
+.cartEmptyPanel::before { z-index: 0; }
+.cartEmptyPanel > * { position: relative; z-index: 1; }
