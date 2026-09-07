@@ -178,7 +178,8 @@ export default function StorePage() {
     setSaving(true); setError("");
     const key = checkoutKey || readCheckoutKey() || crypto.randomUUID(); setCheckoutKey(key); try { localStorage.setItem("khora-store-checkout-key", key); } catch { /* optional persistence */ }
     try {
-      const response = await fetch("/api/tienda", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "create_order", token, idempotencyKey: key, customer }) });
+      const diagnostics = new URLSearchParams(window.location.search).get("diagnostico") === "1";
+      const response = await fetch("/api/tienda", { method: "POST", headers: { "content-type": "application/json", ...(diagnostics ? { "x-khora-store-diagnostic": "1" } : {}) }, body: JSON.stringify({ action: "create_order", token, idempotencyKey: key, customer }) });
       const responseBody = await response.text();
       let data: CreateOrderResponse = {};
       try { data = JSON.parse(responseBody) as CreateOrderResponse; } catch { data = { error: responseBody || "La respuesta del servidor no es válida." }; }

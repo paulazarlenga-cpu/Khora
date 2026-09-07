@@ -78,4 +78,6 @@ test("12. el checkout inserta el flag de fabricación con el tipo de la base y e
   assert.match(route, /requestId/);
   assert.match(page, /createOrderInFlight\.current/);
   assert.match(page, /statusText: response\.statusText/);
+  assert.match(page, /x-khora-store-diagnostic/);
+  assert.match(route, /x-khora-store-diagnostic/);
 });

@@ -412,7 +412,7 @@ export async function POST(request: Request) {
     return errorResponse(safeStoreMessage(cause, "No pudimos completar esta acción. Revisá tu conexión e intentá nuevamente."), 400, {
       code,
       requestId,
-      ...(process.env.NODE_ENV === "production" ? {} : { details: safeOriginalMessage }),
+      ...(request.headers.get("x-khora-store-diagnostic") === "1" ? { details: safeOriginalMessage } : {}),
     });
   }
 }
