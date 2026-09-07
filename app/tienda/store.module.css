@@ -108,7 +108,7 @@
 }
 
 
-/* Bag interaction feedback. A single icon changes state when the cart has items. */
+/* Bag interaction feedback. The icon remains singular and only changes between outline and filled states. */
 .bagAction { position:relative; }
 .bagAction::after {
   content:"";
@@ -129,29 +129,14 @@
 .bagAction:focus-visible::after { transform:scaleX(1); }
 .bagAnimationFrame { display:inline-flex; align-items:center; gap:8px; transform:translateY(0); transition:transform .25s ease; }
 .bagAction:hover .bagAnimationFrame { transform:translateY(-1px); }
-.bagIconWrap { width:17px; height:19px; display:block; flex:none; transform-origin:center; }
+.bagIconWrap { width:17px; height:19px; display:block; flex:none; }
 .bagIcon { width:100%; height:100%; display:block; }
 .bagIconFilled { color:var(--khora-green); }
-.bagAnimating .bagIconWrap { animation:bagReact .58s cubic-bezier(.22,1,.36,1) both; }
-.bagAnimating .bagLabel { animation:bagLabelReact .42s ease-out both; }
-@keyframes bagReact {
-  0% { transform:scale(1) rotate(0deg); }
-  30% { transform:scale(1.1) rotate(-4deg); }
-  55% { transform:scale(1.06) rotate(3deg); }
-  75% { transform:scale(.99) rotate(-1deg); }
-  100% { transform:scale(1) rotate(0deg); }
-}
-@keyframes bagLabelReact {
-  0% { opacity:1; transform:translateY(0); }
-  35% { opacity:.82; transform:translateY(-2px); }
-  100% { opacity:1; transform:translateY(0); }
-}
 @media (prefers-reduced-motion:reduce) {
   .bagAction::after,
   .bagAnimationFrame { transition:none; }
-  .bagAnimating .bagIconWrap,
-  .bagAnimating .bagLabel { animation:none; }
 }
+
 /* Shared editorial search treatment for the storefront header and catalog. */
 .search,
 .catalogSearch {
