@@ -10,12 +10,20 @@ export type SearchCategory = "Clientes" | "Productos" | "Materias primas" | "Lot
 export type GlobalSearchResult = { id: string; category: SearchCategory; title: string; subtitle: string; icon: KhoraIconName; destination: NavigationIntent };
 
 type RealRow = Record<string, unknown>;
-export type OperationalData = { clients: RealRow[]; products: RealRow[]; materials: RealRow[]; batches: RealRow[]; suppliers: RealRow[]; purchases: RealRow[]; mixtures: RealRow[] };
-export const emptyOperationalData: OperationalData = { clients: [], products: [], materials: [], batches: [], suppliers: [], purchases: [], mixtures: [] };
+export type OperationalData = { clients: RealRow[]; products: RealRow[]; materials: RealRow[]; batches: RealRow[]; suppliers: RealRow[]; purchases: RealRow[]; mixtures: RealRow[]; orders: RealRow[] };
+export const emptyOperationalData: OperationalData = { clients: [], products: [], materials: [], batches: [], suppliers: [], purchases: [], mixtures: [], orders: [] };
 export type OperationalStockAlerts = { products: StockAlertSummary; materials: StockAlertSummary; mixtures: StockAlertSummary; summary: StockAlertSummary };
 
 const text = (value: unknown) => String(value ?? "");
 const numeric = (value: unknown) => Number(value ?? 0);
+export function getOrderOperationalState(order: RealRow) {
+  const explicit = text(order.store_status).toUpperCase();
+  if (["PENDING_PAYMENT", "PAID", "PENDING_DELIVERY", "DELIVERED", "CANCELLED", "EXPIRED"].includes(explicit)) return explicit;
+  if (text(order.status).toUpperCase() === "DELIVERED") return "DELIVERED";
+  if (text(order.status).toUpperCase() === "CANCELLED") return "CANCELLED";
+  if (text(order.payment_status).toUpperCase() === "PAID") return "PENDING_DELIVERY";
+  return "PENDING_PAYMENT";
+}
 
 export function getOperationalOverview(data: OperationalData) {
   const isActive = (row: RealRow) => row.active === true || numeric(row.active) === 1;
@@ -33,10 +41,13 @@ export function getOperationalOverview(data: OperationalData) {
   stockAlerts.summary = { lowCount, outCount, problemCount: lowCount + outCount, severity: outCount > 0 ? "out" : lowCount > 0 ? "low" : "normal" };
   const stockTone: Tone = stockAlerts.summary.severity === "out" ? "danger" : stockAlerts.summary.severity === "low" ? "warning" : "info";
   const pendingPurchases = data.purchases.filter((purchase) => text(purchase.payment_status).toUpperCase() !== "PAID" && text(purchase.status) !== "Anulada");
+  const activeOrders = data.orders.filter((order) => ["PENDING_PAYMENT", "PAID", "PENDING_DELIVERY"].includes(getOrderOperationalState(order)));
   const agenda: AgendaItem[] = [
     { id: "manufacture", label: "planificador de fabricación", detail: "Revisar necesidades de producción", count: 0, icon: moduleIcons.fabricacion, tone: "info", destination: { section: "fabricacion" } },
     { id: "buy", label: "materias primas por comprar", detail: "Stock en poco o sin stock", count: stockAlerts.materials.problemCount, icon: moduleIcons.stock, tone: stockAlerts.materials.severity === "out" ? "danger" : stockAlerts.materials.severity === "low" ? "warning" : "info", destination: { section: "stock" } },
     { id: "pay", label: "compras con pago pendiente", detail: "Seguimiento de pagos", count: pendingPurchases.length, icon: moduleIcons.ventas, tone: "warning", destination: { section: "finanzas" } },
+    { id: "orders", label: "pedidos por atender", detail: "Pendientes de pago o entrega", count: activeOrders.length, icon: moduleIcons.pedidos, tone: activeOrders.length ? "warning" : "info", destination: { section: "pedidos" } },
+    { id: "mixtures", label: "mezclas por revisar", detail: "Stock bajo o sin stock", count: stockAlerts.mixtures.problemCount, icon: moduleIcons.fabricacion, tone: stockAlerts.mixtures.severity === "out" ? "danger" : stockAlerts.mixtures.severity === "low" ? "warning" : "info", destination: { section: "stock" } },
   ];
   const alerts: OperationalAlert[] = [
     ...activeProducts.flatMap((product) => {
@@ -54,7 +65,13 @@ export function getOperationalOverview(data: OperationalData) {
       if (status === "normal") return [];
       return [{ id: `mixture-${text(mixture.id)}`, priority: status === "out" ? "critical" as const : "attention" as const, title: status === "out" ? `${text(mixture.name)} sin stock` : `${text(mixture.name)} con poco stock`, detail: `Quedan ${numeric(mixture.current_stock)} ${text(mixture.unit)} · mínimo ${numeric(mixture.minimum_stock)}`, action: "Ver mezcla", tone: status === "out" ? "danger" as Tone : "warning" as Tone, destination: { section: "stock" as SectionId, query: text(mixture.name) }, dismissible: false }];
     }),
-    ...pendingPurchases.map((purchase) => ({ id: `purchase-${text(purchase.id)}`, priority: "attention" as const, title: `Compra C-${text(purchase.id)} pendiente`, detail: `${text(purchase.supplier) || "Sin proveedor"} · ${text(purchase.material)}`, action: "Abrir compra", tone: "warning" as Tone, destination: { section: "compras" as SectionId, query: `C-${text(purchase.id)}` } })),
+    ...pendingPurchases.map((purchase) => ({ id: "purchase-" + text(purchase.id), priority: "attention" as const, title: "Compra C-" + text(purchase.id) + " pendiente", detail: (text(purchase.supplier) || "Sin proveedor") + " · " + text(purchase.material), action: "Abrir compra", tone: "warning" as Tone, destination: { section: "compras" as SectionId, query: "C-" + text(purchase.id) } })),
+    ...activeOrders.map((order) => {
+      const state = getOrderOperationalState(order);
+      const pendingPayment = state === "PENDING_PAYMENT";
+      const number = text(order.number) || ("KH-" + text(order.id).padStart(6, "0"));
+      return { id: "order-" + text(order.id), priority: "attention" as const, title: pendingPayment ? "Pedido " + number + " pendiente de pago" : "Pedido " + number + " pendiente de entrega", detail: (text(order.client) || "Cliente sin vincular") + " · " + (pendingPayment ? "Revisar cobro" : "Coordinar entrega"), action: "Abrir pedido", tone: pendingPayment ? "warning" as Tone : "info" as Tone, destination: { section: "pedidos" as SectionId, query: number }, dismissible: false };
+    }),
   ];
   return { agenda, alerts, stockAlerts, stockSeverity: stockAlerts.summary.severity, stockTone };
 }

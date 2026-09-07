@@ -475,11 +475,11 @@ const dashboardSnapshot = async () => {
   db().prepare("SELECT COUNT(*) value FROM raw_materials WHERE active=1 AND current_stock<=minimum_stock"),
   db().prepare(views.clients), db().prepare(views.products), db().prepare(views.materials), db().prepare(views.manufacturing), db().prepare(views.suppliers), db().prepare(views.purchases),
   db().prepare(`SELECT m.id,m.code,m.name,m.unit,m.yield_quantity,m.minimum_stock,m.active,m.notes,COALESCE((SELECT SUM(ml.available_quantity) FROM mixture_lots ml WHERE ml.mixture_id=m.id AND ml.status='ACTIVE'),0) current_stock,COALESCE((SELECT ROUND(SUM(ml.available_quantity*ml.unit_cost_cents)/NULLIF(SUM(ml.available_quantity),0)) FROM mixture_lots ml WHERE ml.mixture_id=m.id AND ml.status='ACTIVE' AND ml.available_quantity>0),(SELECT ROUND(SUM(mfi.quantity_per_yield*rm.current_cost_cents)::numeric/NULLIF(m.yield_quantity,0)) FROM mixture_formula_items mfi JOIN raw_materials rm ON rm.id=mfi.material_id WHERE mfi.mixture_id=m.id),0) estimated_cost_cents,(SELECT COUNT(*) FROM mixture_formula_items mfi WHERE mfi.mixture_id=m.id) formula_count FROM mixtures m ORDER BY m.active DESC,m.name`),
-  db().prepare(views.sales), db().prepare(views.product_profitability), db().prepare(views.profits),
+  db().prepare(views.orders), db().prepare(views.sales), db().prepare(views.product_profitability), db().prepare(views.profits),
   db().prepare("SELECT COUNT(*) value FROM orders WHERE archived_at IS NULL AND (UPPER(COALESCE(store_status,'')) IN ('PENDING_PAYMENT','PAID','PENDING_DELIVERY') OR (store_status IS NULL AND UPPER(COALESCE(status,'')) NOT IN ('CANCELLED','DELIVERED')))") ,
   db().prepare("SELECT value_json FROM app_settings WHERE key='dismissed_operational_alerts'")
  ]);
- const dismissed = result[15].results[0] as NRow | undefined;
+ const dismissed = result[16].results[0] as NRow | undefined;
  let dismissedAlertIds: string[] = [];
  try {
   const ids = dismissed?.value_json ? JSON.parse(s(dismissed.value_json)) : [];
@@ -488,8 +488,8 @@ const dashboardSnapshot = async () => {
  return {
   summary: { sales: result[0].results[0]?.value ?? 0, expenses: result[1].results[0]?.value ?? 0, lowProducts: result[2].results[0]?.value ?? 0, lowMaterials: result[3].results[0]?.value ?? 0 },
   clients: result[4].results, products: result[5].results, materials: result[6].results, batches: result[7].results, suppliers: result[8].results, purchases: result[9].results, mixtures: result[10].results,
-  sales: result[11].results, profitability: result[12].results, profits: result[13].results,
-  orderAttention: Number(result[14].results[0]?.value) || 0, dismissedAlertIds,
+  orders: result[11].results, sales: result[12].results, profitability: result[13].results, profits: result[14].results,
+  orderAttention: Number(result[15].results[0]?.value) || 0, dismissedAlertIds,
  };
 };
 export async function GET(request:Request){try{

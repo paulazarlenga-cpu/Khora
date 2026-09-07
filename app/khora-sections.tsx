@@ -10,11 +10,12 @@ import { calendarLayers, countCalendarEvents, getBusinessCalendarEvents, type Bu
 import { baseUnits, categoryPrefix, convertUnit, getStockAlertSummary, getStockStatus, materialStockStatus, productsUsingMaterial, purchaseProjection, suggestMaterialCode, type StockAlertSummary } from "./khora-inventory";
 import { nextSequentialCode } from "./khora-codes";
 import { KhoraIcon, moduleIcons, type KhoraIconName } from "./khora-icons";
+import { getOrderOperationalState } from "./khora-operations";
 import { Button } from "./khora-button";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 type DashboardRow = Record<string, unknown>;
-export type DashboardSnapshot = { summary: DashboardRow; products: DashboardRow[]; materials: DashboardRow[]; sales: DashboardRow[]; clients: DashboardRow[]; purchases: DashboardRow[]; profitability: DashboardRow[]; profits: DashboardRow[] };
+export type DashboardSnapshot = { summary: DashboardRow; products: DashboardRow[]; materials: DashboardRow[]; sales: DashboardRow[]; clients: DashboardRow[]; purchases: DashboardRow[]; profitability: DashboardRow[]; profits: DashboardRow[]; batches: DashboardRow[]; suppliers: DashboardRow[]; mixtures: DashboardRow[]; orders: DashboardRow[] };
 type Props = { section: SectionId; search: string; onNavigate: (section: SectionId, query?: string) => void; onCreate?: (kind: string, section?: SectionId) => void; dashboardSnapshot: DashboardSnapshot; dashboardLoading: boolean; dashboardError: string; dashboardLoaded: boolean };
 
 export function SectionContent({ section, search, onNavigate, onCreate, dashboardSnapshot, dashboardLoading, dashboardError, dashboardLoaded }: Props) {
@@ -100,6 +101,9 @@ function Dashboard({ onNavigate, data, loading, error, loaded }: { onNavigate: (
   const materialsAlert = getStockAlertSummary(activeMaterials, (row) => ({ stock: number(row.current_stock), minimum: number(row.minimum_stock) }));
   const lowProducts = activeProducts.filter((row) => getStockStatus(number(row.available_stock ?? row.current_stock), number(row.minimum_stock)) !== "normal");
   const lowMaterials = activeMaterials.filter((row) => getStockStatus(number(row.available_stock ?? row.current_stock), number(row.minimum_stock)) !== "normal");
+  const activeMixtures = data.mixtures.filter((row) => row.active === true || number(row.active) === 1);
+  const mixturesAlert = getStockAlertSummary(activeMixtures, (row) => ({ stock: number(row.current_stock), minimum: number(row.minimum_stock) }));
+  const activeOrders = data.orders.filter((row) => ["PENDING_PAYMENT", "PAID", "PENDING_DELIVERY"].includes(getOrderOperationalState(row)));
   const currentMonth = new Date().toISOString().slice(0, 7);
   const monthPurchases = data.purchases.filter((row) => String(row.purchased_at).slice(0, 7) === currentMonth && !["CANCELLED", "Anulada"].includes(String(row.status)));
   const purchaseTotal = monthPurchases.reduce((sum, row) => sum + number(row.total_cost_cents), 0);
@@ -111,6 +115,16 @@ function Dashboard({ onNavigate, data, loading, error, loaded }: { onNavigate: (
   const alerts = [
     ...lowProducts.map((row) => { const status = getStockStatus(number(row.available_stock ?? row.current_stock), number(row.minimum_stock)); return { id: `product-${row.id}`, title: status === "out" ? `${row.name} sin stock` : `${row.name} con poco stock`, detail: `Disponibles ${number(row.available_stock ?? row.current_stock)} u. · mínimo ${number(row.minimum_stock)}`, section: "stock" as SectionId, tone: status === "out" ? "danger" : "warning" }; }),
     ...lowMaterials.map((row) => { const status = getStockStatus(number(row.current_stock), number(row.minimum_stock)); return { id: `material-${row.id}`, title: status === "out" ? `${row.material} sin stock` : `${row.material} con poco stock`, detail: `Stock ${number(row.current_stock)} ${String(row.unit ?? "")}. · mínimo ${number(row.minimum_stock)}`, section: "stock" as SectionId, tone: status === "out" ? "danger" : "warning" }; }),
+    ...activeMixtures.flatMap((row) => {
+      const status = getStockStatus(number(row.current_stock), number(row.minimum_stock));
+      if (status === "normal") return [];
+      return [{ id: "mixture-" + String(row.id), title: status === "out" ? String(row.name) + " sin stock" : String(row.name) + " con poco stock", detail: "Stock " + number(row.current_stock) + " " + String(row.unit ?? "") + " · mínimo " + number(row.minimum_stock), section: "stock" as SectionId, tone: status === "out" ? "danger" : "warning" }];
+    }),
+    ...activeOrders.map((row) => {
+      const state = getOrderOperationalState(row);
+      const number = String(row.number ?? "") || ("KH-" + String(row.id).padStart(6, "0"));
+      return { id: "order-" + String(row.id), title: state === "PENDING_PAYMENT" ? "Pedido " + number + " pendiente de pago" : "Pedido " + number + " pendiente de entrega", detail: String(row.client ?? "Cliente sin vincular"), section: "pedidos" as SectionId, tone: state === "PENDING_PAYMENT" ? "warning" : "info" };
+    }),
     ...unpaidSales.map((row) => ({ id: `sale-${row.id}`, title: `Venta V-${row.id} con cobro pendiente`, detail: `${String(row.client ?? "Consumidor final")} · faltan ${pesos(row.pending_cents)}`, section: "ventas" as SectionId, tone: "warning" })),
   ];
   const today = new Intl.DateTimeFormat("es-AR", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
@@ -123,6 +137,8 @@ function Dashboard({ onNavigate, data, loading, error, loaded }: { onNavigate: (
         <button onClick={() => onNavigate("ventas")}><span className="agenda-glyph success"><KhoraIcon name={moduleIcons.ventas} /></span><span><strong>{data.sales.length} ventas registradas</strong><small>{unpaidSales.length} con cobro pendiente</small></span><i>→</i></button>
         <button onClick={() => onNavigate("stock")}><span className="agenda-glyph danger"><KhoraIcon name={moduleIcons.stock} /></span><span><strong>{lowProducts.length + lowMaterials.length} stocks para revisar</strong><small>Productos y materias primas</small></span><i>→</i></button>
         <button onClick={() => onNavigate("compras")}><span className="agenda-glyph info"><KhoraIcon name={moduleIcons.compras} /></span><span><strong>{lowMaterials.length} materias primas por comprar</strong><small>Según el mínimo configurado</small></span><i>→</i></button>
+        <button onClick={() => onNavigate("pedidos")}><span className="agenda-glyph warning"><KhoraIcon name={moduleIcons.pedidos} /></span><span><strong>{activeOrders.length} pedidos por atender</strong><small>Pendientes de pago o entrega</small></span><i>→</i></button>
+        <button onClick={() => onNavigate("stock")}><span className={mixturesAlert.severity === "out" ? "agenda-glyph danger" : mixturesAlert.severity === "low" ? "agenda-glyph warning" : "agenda-glyph info"}><KhoraIcon name={moduleIcons.fabricacion} /></span><span><strong>{mixturesAlert.problemCount} mezclas por revisar</strong><small>Stock bajo o sin stock</small></span><i>→</i></button>
       </div>
       <div className="priority-columns">
         <div><h3><i className="priority-dot critical" />Requiere atención</h3>{alerts.filter((alert) => alert.tone === "danger").slice(0, 4).map((alert) => <button key={alert.id} onClick={() => onNavigate(alert.section)}><span><strong>{alert.title}</strong><small>{alert.detail}</small></span><i>→</i></button>)}{!alerts.some((alert) => alert.tone === "danger") && <p className="empty-operation">✓ No hay faltantes críticos.</p>}</div>
