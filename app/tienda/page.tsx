@@ -330,15 +330,52 @@ function CustomerForm({ customer, setCustomer, cart, total, saving, onBack, onSu
   return <main className={`${styles.narrowPage} ${styles.detailsPage}`}><button className={styles.backLink} onClick={onBack}>← Volver a la bolsa</button><div className={styles.pageTitle}><p className={styles.eyebrow}>ÚLTIMO PASO</p><h1>Tus datos</h1><p>Solo necesitamos lo esencial para preparar tu pedido.</p></div><form className={styles.customerLayout} onSubmit={onSubmit}><div className={styles.formCard}><label>Nombre y apellido *<input required value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} autoComplete="name" /></label><label>Teléfono / WhatsApp *<input required type="tel" inputMode="tel" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} autoComplete="tel" /></label><label>Correo electrónico <input type="email" value={customer.email} onChange={(event) => setCustomer({ ...customer, email: event.target.value })} autoComplete="email" /></label><label>Localidad / zona <input value={customer.location} onChange={(event) => setCustomer({ ...customer, location: event.target.value })} autoComplete="address-level2" /></label><p className={styles.formHint}>Al generar el pedido, tus productos quedan reservados por 24 horas mientras coordinamos el pago y la entrega.</p><button type="submit" className={`${styles.primary} ${styles.fullButton}`} disabled={saving}>{saving ? "Generando pedido…" : "Generar pedido"} <span>→</span></button></div><aside className={styles.summaryCard}><h2>Resumen</h2>{cart.map((item) => <div key={item.id}><span>{item.quantity} × {item.name}</span><strong>{money(item.quantity * item.priceCents)}</strong></div>)}<div className={styles.summaryTotal}><span>Total</span><strong>{money(total)}</strong></div></aside></form></main>;
 }
 
+function ConfirmationDivider({ bottom = false }: { bottom?: boolean }) {
+  return <div className={styles.confirmDivider + " " + (bottom ? styles.confirmDividerBottom : "")} aria-hidden="true">
+    <span />
+    <svg viewBox="0 0 34 26" focusable="false">
+      <path d="M17 23c1-8 5-15 13-21" />
+      <path d="M21 16c4-1 7-3 9-6M19 19c-3-1-6-3-8-5M24 11c-2-2-3-4-3-6M15 23c-3-1-5-3-6-6" />
+    </svg>
+    <span />
+  </div>;
+}
+
 function Confirmation({ order, now, configured, whatsappError, copiedOrder, onCopyOrder, onWhatsApp, onBack }: { order: StoreOrder; now: number; configured: boolean; whatsappError: string; copiedOrder: boolean; onCopyOrder: () => void; onWhatsApp: () => void; onBack: () => void }) {
   const state = order.status.toUpperCase();
   const cancelled = state === "CANCELLED";
   const expired = state === "EXPIRED" || (state === "PENDING_PAYMENT" && Boolean(order.expiresAt) && new Date(order.expiresAt).getTime() <= now);
   const closed = cancelled || expired;
   const reservationLabel = state === "PAID" || state === "PENDING_DELIVERY" || state === "DELIVERED" ? "Pago confirmado" : closed ? "Reserva cerrada" : "24 horas";
-  return <main className={styles.confirmation}><div className={styles.confirmMark}>{closed ? "!" : "✓"}</div><p className={styles.eyebrow}>KHORA TIENDA</p><h1>{closed ? (cancelled ? "Pedido cancelado" : "Pedido vencido") : "Pedido generado"}</h1><p className={styles.confirmLead}>{closed ? (cancelled ? <>El pedido <strong>{order.number}</strong> ya no está activo.</> : <>El pedido <strong>{order.number}</strong> venció y ya no conserva la reserva.</>) : <>Tu pedido <strong>{order.number}</strong> fue generado correctamente.</>}</p><div className={styles.confirmCard}><div><span>Pedido</span><strong>{order.number}</strong><button className={styles.copyOrder} onClick={onCopyOrder}>{copiedOrder ? "Copiado" : `Copiar ${order.number}`}</button></div><div><span>Total</span><strong>{money(order.totalCents)}</strong></div><div><span>{state === "PAID" ? "Estado" : "Reserva"}</span><strong>{reservationLabel}</strong></div></div>{closed ? <p className={styles.confirmCopy}>{cancelled ? "No vuelvas a abrir WhatsApp con este pedido. Si necesitás comprar, generá un pedido nuevo." : "Volvé a generar uno para verificar stock y precios actuales."}</p> : <p className={styles.confirmCopy}>Tus productos quedaron reservados mientras coordinamos el pago y la entrega.</p>}{!closed && <button className={`${styles.primary} ${styles.whatsappButton}`} onClick={onWhatsApp}>Continuar por WhatsApp <span>→</span></button>}{whatsappError && <p className={styles.whatsappError} role="alert">{whatsappError}</p>}{!configured && !closed && <p className={styles.configHint}>El pedido ya existe. WhatsApp todavía no está configurado; podés coordinarlo desde KHORA Administración.</p>}<button className={styles.linkButton} onClick={onBack}>Volver a la tienda</button></main>;
+  return <main className={styles.confirmation}>
+    <div className={styles.confirmMark}>{closed ? "!" : "✓"}</div>
+    <p className={styles.eyebrow}>KHORA TIENDA</p>
+    <h1>{closed ? (cancelled ? "Pedido cancelado" : "Pedido vencido") : "Pedido generado"}</h1>
+    <p className={styles.confirmLead}>{closed ? (cancelled ? <>El pedido <strong>{order.number}</strong> ya no está activo.</> : <>El pedido <strong>{order.number}</strong> venció y ya no conserva la reserva.</>) : <>Tu pedido <strong>{order.number}</strong> fue generado correctamente.</>}</p>
+    <ConfirmationDivider />
+    <div className={styles.confirmCard}>
+      <div>
+        <span>Pedido</span>
+        <strong>{order.number}</strong>
+        <button className={styles.copyOrder} onClick={onCopyOrder} aria-label={copiedOrder ? "Número de pedido " + order.number + " copiado" : "Copiar número de pedido " + order.number}>
+          <span className={styles.copyIcon} aria-hidden="true">{copiedOrder ? "✓" : "▣"}</span>
+          {copiedOrder ? "Copiado" : "Copiar " + order.number}
+        </button>
+      </div>
+      <div><span>Total</span><strong>{money(order.totalCents)}</strong></div>
+      <div><span>{state === "PAID" ? "Estado" : "Reserva"}</span><strong>{reservationLabel}</strong></div>
+    </div>
+    {closed ? <p className={styles.confirmCopy}>{cancelled ? "No vuelvas a abrir WhatsApp con este pedido. Si necesitás comprar, generá un pedido nuevo." : "Volvé a generar uno para verificar stock y precios actuales."}</p> : <p className={styles.confirmCopy}>Tus productos quedaron reservados mientras coordinamos el pago y la entrega.</p>}
+    <div className={styles.confirmActions}>
+      {!closed && <button className={styles.primary + " " + styles.whatsappButton} onClick={onWhatsApp}>Continuar por WhatsApp <span>→</span></button>}
+      <button className={styles.linkButton} onClick={onBack}>Volver a la tienda</button>
+    </div>
+    {whatsappError && <p className={styles.whatsappError} role="alert">{whatsappError}</p>}
+    {!configured && !closed && <p className={styles.configHint}>El pedido ya existe. WhatsApp todavía no está configurado; podés coordinarlo desde KHORA Administración.</p>}
+    <ConfirmationDivider bottom />
+    <p className={styles.confirmTagline}>Cosas lindas para una vida real</p>
+  </main>;
 }
-
 function FooterLink({ href, children, external = false }: { href?: string; children: string; external?: boolean }) {
   if (!href) return <span className={styles.footerLinkPending} aria-disabled="true">{children}</span>;
   return <a href={href} target={external ? "_blank" : undefined} rel={external ? "noreferrer" : undefined}>{children}</a>;
