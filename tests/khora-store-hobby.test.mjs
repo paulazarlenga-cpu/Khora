@@ -63,3 +63,18 @@ test("11. Vercel no programa vencimientos horarios", async () => {
   assert.doesNotMatch(vercel, /orders_auto_expire/);
   assert.doesNotMatch(vercel, /0 \* \* \* \*/);
 });
+
+test("12. el checkout inserta el flag de fabricación con el tipo de la base y evita doble envío", async () => {
+  const [route, page, migration] = await Promise.all([
+    read("app/api/tienda/route.ts"),
+    read("app/tienda/page.tsx"),
+    read("supabase/migrations/202608200001_khora_initial.sql"),
+  ]);
+  assert.match(migration, /requires_manufacturing integer not null default 0/);
+  assert.match(route, /requires_manufacturing\) VALUES\(\?,\?,\?,\?,\?,\?,0\)/);
+  assert.doesNotMatch(route, /requires_manufacturing\) VALUES\(\?,\?,\?,\?,\?,\?,FALSE\)/);
+  assert.match(route, /\[KHORA Tienda\] request failed/);
+  assert.match(route, /requestId/);
+  assert.match(page, /createOrderInFlight\.current/);
+  assert.match(page, /statusText: response\.statusText/);
+});

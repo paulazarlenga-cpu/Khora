@@ -8,6 +8,17 @@ type View = "home" | "product" | "cart" | "details" | "confirmation";
 type Product = { id: number; code: string; name: string; description: string; category: string; type: string; priceCents: number; stock: number; availableStock: number; imagePath: string | null; published: boolean };
 type CartLine = Product & { quantity: number };
 type StoreOrder = { number: string; expiresAt: string; totalCents: number; status: string; paymentStatus: string; customer: { name: string; phone: string; email: string; location: string }; items: Array<{ productId: number; name: string; quantity: number; priceCents: number; lineTotalCents: number }> };
+type CreateOrderResponse = {
+  order?: StoreOrder;
+  settings?: { whatsapp: string; businessName: string };
+  accessToken?: string;
+  priceChanged?: boolean;
+  changes?: Array<{ productId: number; newPriceCents: number }>;
+  error?: string;
+  code?: string;
+  requestId?: string;
+  details?: string;
+};
 
 const money = (cents: number) => new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(cents / 100);
 const formatQuantity = (value: number) => Number.isInteger(value) ? String(value) : value.toLocaleString("es-AR", { maximumFractionDigits: 2 });
@@ -57,6 +68,7 @@ export default function StorePage() {
   const [whatsappError, setWhatsappError] = useState("");
   const [copiedOrder, setCopiedOrder] = useState(false);
   const [checkoutKey, setCheckoutKey] = useState("");
+  const createOrderInFlight = useRef(false);
   const [catalogRefresh, setCatalogRefresh] = useState(0);
   const [customer, setCustomer] = useState({ name: "", phone: "", email: "", location: "" });
   const [now, setNow] = useState(() => Date.now());
@@ -160,20 +172,34 @@ export default function StorePage() {
   }
 
   async function createOrder(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!cart.length) { navigate("cart"); return; }
+    event.preventDefault();
+    if (createOrderInFlight.current || !cart.length) { if (!cart.length) navigate("cart"); return; }
+    createOrderInFlight.current = true;
     setSaving(true); setError("");
     const key = checkoutKey || readCheckoutKey() || crypto.randomUUID(); setCheckoutKey(key); try { localStorage.setItem("khora-store-checkout-key", key); } catch { /* optional persistence */ }
     try {
       const response = await fetch("/api/tienda", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "create_order", token, idempotencyKey: key, customer }) });
-      const data = await response.json();
+      const responseBody = await response.text();
+      let data: CreateOrderResponse = {};
+      try { data = JSON.parse(responseBody) as CreateOrderResponse; } catch { data = { error: responseBody || "La respuesta del servidor no es válida." }; }
       if (response.status === 409 && data.priceChanged) {
-        const updates = new Map<number, number>((data.changes ?? []).map((item: { productId: number; newPriceCents: number }) => [Number(item.productId), Number(item.newPriceCents)] as const));
+        const updates = new Map<number, number>((data.changes ?? []).map((item) => [Number(item.productId), Number(item.newPriceCents)] as const));
         const updatedCart = cart.map((item) => updates.has(item.id) ? { ...item, priceCents: updates.get(item.id)! } : item); saveCart(updatedCart); try { await syncReservation(updatedCart); } catch { /* keep the latest reservation error visible */ }
         setError("El precio de uno o más productos se actualizó. Revisá el nuevo total antes de generar el pedido."); return;
       }
-      if (!response.ok || !data.order || !data.accessToken) throw new Error(data.error ?? "No pudimos generar el pedido. Tu bolsa sigue disponible.");
+      if (!response.ok || !data.order || !data.accessToken) {
+        console.error("[KHORA Tienda] create_order response", {
+          status: response.status,
+          statusText: response.statusText,
+          responseBody: data,
+          errorCode: data.code ?? "UNKNOWN",
+          message: data.error ?? "No se recibió un pedido válido.",
+          requestId: data.requestId ?? "",
+        });
+        throw new Error(data.error ?? "No pudimos generar el pedido. Tu bolsa sigue disponible.");
+      }
       setOrder(data.order); if (data.settings) setSettings(data.settings); saveCart([]); setExpiresAt(""); try { localStorage.removeItem("khora-store-expires"); localStorage.removeItem("khora-store-token"); localStorage.removeItem("khora-store-checkout-key"); } catch { /* optional persistence */ } setCheckoutKey(""); setNotice(""); navigate("confirmation", undefined, data.order.number, String(data.accessToken));
-    } catch (cause) { setError(friendlyError(cause, "No pudimos generar el pedido. Tu bolsa sigue disponible.")); } finally { setSaving(false); }
+    } catch (cause) { setError(friendlyError(cause, "No pudimos generar el pedido. Tu bolsa sigue disponible.")); } finally { createOrderInFlight.current = false; setSaving(false); }
   }
 
   function whatsappUrl() { return order && settings.whatsapp ? buildWhatsAppLink(settings.whatsapp, buildStoreOrderWhatsAppMessage(order)) : ""; }
@@ -292,7 +318,7 @@ function CartView({ cart, total, expiresAt, expired, saving, onBack, onChange, o
 }
 
 function CustomerForm({ customer, setCustomer, cart, total, saving, onBack, onSubmit }: { customer: { name: string; phone: string; email: string; location: string }; setCustomer: (value: { name: string; phone: string; email: string; location: string }) => void; cart: CartLine[]; total: number; saving: boolean; onBack: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <main className={styles.narrowPage}><button className={styles.backLink} onClick={onBack}>← Volver a la bolsa</button><div className={styles.pageTitle}><p className={styles.eyebrow}>ÚLTIMO PASO</p><h1>Tus datos</h1><p>Solo necesitamos lo esencial para preparar tu pedido.</p></div><form className={styles.customerLayout} onSubmit={onSubmit}><div className={styles.formCard}><label>Nombre y apellido *<input required value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} autoComplete="name" /></label><label>Teléfono / WhatsApp *<input required type="tel" inputMode="tel" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} autoComplete="tel" /></label><label>Correo electrónico <input type="email" value={customer.email} onChange={(event) => setCustomer({ ...customer, email: event.target.value })} autoComplete="email" /></label><label>Localidad / zona <input value={customer.location} onChange={(event) => setCustomer({ ...customer, location: event.target.value })} autoComplete="address-level2" /></label><p className={styles.formHint}>Al generar el pedido, tus productos quedan reservados por 24 horas mientras coordinamos el pago y la entrega.</p><button className={`${styles.primary} ${styles.fullButton}`} disabled={saving}>{saving ? "Generando pedido…" : "Generar pedido"} <span>→</span></button></div><aside className={styles.summaryCard}><h2>Resumen</h2>{cart.map((item) => <div key={item.id}><span>{item.quantity} × {item.name}</span><strong>{money(item.quantity * item.priceCents)}</strong></div>)}<div className={styles.summaryTotal}><span>Total</span><strong>{money(total)}</strong></div></aside></form></main>;
+  return <main className={styles.narrowPage}><button className={styles.backLink} onClick={onBack}>← Volver a la bolsa</button><div className={styles.pageTitle}><p className={styles.eyebrow}>ÚLTIMO PASO</p><h1>Tus datos</h1><p>Solo necesitamos lo esencial para preparar tu pedido.</p></div><form className={styles.customerLayout} onSubmit={onSubmit}><div className={styles.formCard}><label>Nombre y apellido *<input required value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} autoComplete="name" /></label><label>Teléfono / WhatsApp *<input required type="tel" inputMode="tel" value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} autoComplete="tel" /></label><label>Correo electrónico <input type="email" value={customer.email} onChange={(event) => setCustomer({ ...customer, email: event.target.value })} autoComplete="email" /></label><label>Localidad / zona <input value={customer.location} onChange={(event) => setCustomer({ ...customer, location: event.target.value })} autoComplete="address-level2" /></label><p className={styles.formHint}>Al generar el pedido, tus productos quedan reservados por 24 horas mientras coordinamos el pago y la entrega.</p><button type="submit" className={`${styles.primary} ${styles.fullButton}`} disabled={saving}>{saving ? "Generando pedido…" : "Generar pedido"} <span>→</span></button></div><aside className={styles.summaryCard}><h2>Resumen</h2>{cart.map((item) => <div key={item.id}><span>{item.quantity} × {item.name}</span><strong>{money(item.quantity * item.priceCents)}</strong></div>)}<div className={styles.summaryTotal}><span>Total</span><strong>{money(total)}</strong></div></aside></form></main>;
 }
 
 function Confirmation({ order, now, configured, whatsappError, copiedOrder, onCopyOrder, onWhatsApp, onBack }: { order: StoreOrder; now: number; configured: boolean; whatsappError: string; copiedOrder: boolean; onCopyOrder: () => void; onWhatsApp: () => void; onBack: () => void }) {

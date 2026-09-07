@@ -323,7 +323,7 @@ async function createStoreOrder(body: Record<string, unknown>) {
       const orderId = asNumber(createdOrder?.id);
       if (!orderId) throw new Error("No se pudo crear el pedido.");
       await tx.batch([
-        ...reservationItems.map((item) => tx.prepare("INSERT INTO order_items(order_id,product_id,description,quantity,unit_price_cents,line_total_cents,requires_manufacturing) VALUES(?,?,?,?,?,?,FALSE)").bind(orderId, asNumber(item.product_id), asString(item.name), asNumber(item.quantity), asNumber(item.sale_price_cents), Math.round(asNumber(item.quantity) * asNumber(item.sale_price_cents)))),
+        ...reservationItems.map((item) => tx.prepare("INSERT INTO order_items(order_id,product_id,description,quantity,unit_price_cents,line_total_cents,requires_manufacturing) VALUES(?,?,?,?,?,?,0)").bind(orderId, asNumber(item.product_id), asString(item.name), asNumber(item.quantity), asNumber(item.sale_price_cents), Math.round(asNumber(item.quantity) * asNumber(item.sale_price_cents)))),
         tx.prepare("UPDATE store_reservations SET status='COMMITTED',updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='ACTIVE'").bind(asNumber(reservation.id)),
         tx.prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','ORDER',?,'KHORA Tienda',?,?)").bind(orderId, `Pedido ${number} generado desde KHORA Tienda`, JSON.stringify({ source: "STORE", customerId: clientId, reservedUntil: asString(reservation.expires_at), committedUntilHours: 24, itemSnapshot: snapshotItems })),
       ]);
@@ -365,9 +365,30 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID();
+  let action = "unknown";
+  let requestSummary: Record<string, unknown> = { action };
   try {
     const body = await request.json() as Record<string, unknown>;
-    const action = asString(body.action);
+    action = asString(body.action) || "unknown";
+    const customer = body.customer && typeof body.customer === "object" && !Array.isArray(body.customer) ? body.customer as Record<string, unknown> : {};
+    const items = Array.isArray(body.items) ? body.items : [];
+    requestSummary = {
+      action,
+      hasToken: Boolean(asString(body.token)),
+      hasIdempotencyKey: Boolean(asString(body.idempotencyKey)),
+      customer: {
+        hasName: Boolean(asString(customer.name)),
+        phoneLength: asString(customer.phone).length,
+        hasEmail: Boolean(asString(customer.email)),
+        hasLocation: Boolean(asString(customer.location)),
+      },
+      cart: {
+        itemCount: items.length,
+        productIds: [...new Set(items.map((item) => asNumber((item as Record<string, unknown>)?.productId)).filter((id) => Number.isInteger(id) && id > 0))].sort((a, b) => a - b),
+      },
+    };
+    console.info("[KHORA Tienda] request received", { requestId, request: requestSummary });
     if (action === "reserve") return json(await reserveCart(body.token, body.items));
     if (action === "release") return json(await releaseCart(body.token));
     if (action === "create_order") {
@@ -375,8 +396,23 @@ export async function POST(request: Request) {
       if (result.priceChanged) return json(result, 409);
       return json(result);
     }
-    return errorResponse("Acción desconocida.", 404);
+    return errorResponse("Acción desconocida.", 404, { code: "STORE_UNKNOWN_ACTION", requestId });
   } catch (cause) {
-    return errorResponse(safeStoreMessage(cause, "No pudimos completar esta acción. Revisá tu conexión e intentá nuevamente."), 400);
+    const originalMessage = cause instanceof Error ? cause.message.trim() : "Unknown non-Error failure";
+    const safeOriginalMessage = originalMessage.slice(0, 500).replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]").replace(/\+?\d[\d\s().-]{6,}\d/g, "[redacted-phone]");
+    const knownMessage = safeStoreMessage(cause, "");
+    const code = knownMessage ? "STORE_VALIDATION" : "STORE_INTERNAL";
+    console.error("[KHORA Tienda] request failed", {
+      requestId,
+      request: requestSummary,
+      status: 400,
+      code,
+      error: { databaseCode: typeof (cause as { code?: unknown })?.code === "string" ? (cause as { code: string }).code : "UNKNOWN", message: safeOriginalMessage },
+    });
+    return errorResponse(safeStoreMessage(cause, "No pudimos completar esta acción. Revisá tu conexión e intentá nuevamente."), 400, {
+      code,
+      requestId,
+      ...(process.env.NODE_ENV === "production" ? {} : { details: safeOriginalMessage }),
+    });
   }
 }
