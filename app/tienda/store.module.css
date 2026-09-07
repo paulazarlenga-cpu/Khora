@@ -1293,3 +1293,104 @@
     margin-top: 20px;
   }
 }
+/* Vista “Tus datos”: encuadre compacto dentro del área visible, sin alterar el flujo del checkout. */
+.detailsPage {
+  min-height: calc(100svh - 84px);
+  padding-top: 46px;
+  padding-bottom: 34px;
+}
+
+.detailsPage .pageTitle {
+  margin: 32px 0 24px;
+}
+
+.detailsPage .pageTitle h1 {
+  font-size: clamp(46px, 5vw, 68px);
+}
+
+.detailsPage .pageTitle > p:last-child {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.detailsPage .customerLayout {
+  gap: 30px;
+}
+
+.detailsPage .formCard {
+  gap: 12px;
+  padding: 20px;
+}
+
+.detailsPage .formCard label {
+  gap: 5px;
+  font-size: 10px;
+}
+
+.detailsPage .formCard input {
+  padding: 6px 0;
+  font-size: 14px;
+}
+
+.detailsPage .formHint {
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.detailsPage .formCard .fullButton {
+  min-height: 44px;
+}
+
+.detailsPage .summaryCard {
+  padding: 22px;
+}
+
+.detailsPage .summaryCard h2 {
+  margin-bottom: 14px;
+}
+
+.detailsPage .summaryCard > div {
+  padding: 8px 0;
+}
+
+@media (max-width: 850px) {
+  .detailsPage {
+    min-height: auto;
+    padding-top: 32px;
+    padding-bottom: 70px;
+  }
+
+  .detailsPage .pageTitle {
+    margin-top: 30px;
+    margin-bottom: 24px;
+  }
+
+  .detailsPage .pageTitle h1 {
+    font-size: clamp(43px, 10vw, 62px);
+  }
+
+  .detailsPage .customerLayout {
+    gap: 20px;
+  }
+
+  .detailsPage .formCard {
+    padding: 20px;
+    gap: 14px;
+  }
+}
+
+@media (max-width: 480px) {
+  .detailsPage {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .detailsPage .pageTitle h1 {
+    font-size: clamp(39px, 11vw, 50px);
+  }
+
+  .detailsPage .formCard,
+  .detailsPage .summaryCard {
+    padding: 18px;
+  }
+}
