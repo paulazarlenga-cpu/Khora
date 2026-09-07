@@ -226,7 +226,7 @@ function StoreHeader({ cartCount, filled, animationTrigger, query, onHome, onCat
     </nav>
     <div className={styles.headerActions}>
       <label className={styles.search}><span aria-hidden="true">&#8981;</span><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="Buscar" aria-label="Buscar productos" /></label>
-      <button className={`${styles.textAction} ${styles.bagAction}`} onClick={onCart} aria-label="Abrir bolsa"><span className={`${styles.bagAnimationFrame} ${animationTrigger ? styles.bagAnimating : ""} ${filled ? styles.bagFilled : ""}`}><span key={animationTrigger} className={styles.bagIconWrap}><svg className={styles.bagIcon} viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8.5h13l1 11h-15l1-11Z" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M9 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg><span className={styles.bagFill} aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5.5 8.5h13l1 11h-15l1-11Z" fill="currentColor" /><path d="M9 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="var(--khora-green-deep)" strokeWidth="1.5" /></svg></span></span><span key={animationTrigger} className={styles.bagLabel}>Bolsa {cartCount ? `(${cartCount})` : ""}</span></span></button>
+      <button className={`${styles.textAction} ${styles.bagAction}`} onClick={onCart} aria-label="Abrir bolsa"><span className={`${styles.bagAnimationFrame} ${animationTrigger ? styles.bagAnimating : ""}`}><span key={animationTrigger} className={styles.bagIconWrap}><svg className={`${styles.bagIcon} ${filled ? styles.bagIconFilled : ""}`} viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 8.5h13l1 11h-15l1-11Z" fill={filled ? "currentColor" : "none"} stroke="currentColor" strokeWidth="1.5" /><path d="M9 9V6.5a3 3 0 0 1 6 0V9" fill="none" stroke="currentColor" strokeWidth="1.5" /></svg></span><span key={animationTrigger} className={styles.bagLabel}>Bolsa {cartCount ? `(${cartCount})` : ""}</span></span></button>
     </div>
   </header>;
 }
@@ -266,7 +266,7 @@ function AddToCartButton({ variant, onAdd, disabled = false }: AddToCartButtonPr
   const stateLabel = phase === "added" ? "Producto agregado" : phase === "adding" ? "Agregando a la bolsa" : "Agregar a la bolsa";
   const buttonClass = isLink ? `${styles.cardLink} ${styles.addButtonLink}` : `${styles.primary} ${styles.addButtonSolid}`;
   return <button className={`${styles.addButton} ${buttonClass}`} data-add-state={phase} onClick={handleClick} disabled={disabled || phase !== "idle"} aria-label={stateLabel}>
-    <span className={styles.addButtonText} aria-hidden="true"><span className={styles.addButtonTextTrack}><span>Agregar a la bolsa</span><span>Agregado</span></span></span>
+    <span className={styles.addButtonText} aria-hidden="true"><span className={styles.addButtonLabel}>Agregar a la bolsa</span><span className={styles.addButtonAdded}>Agregado</span></span>
     <span className={styles.addButtonIcon} aria-hidden="true"><svg className={styles.addButtonArrow} viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg><svg className={styles.addButtonCheck} viewBox="0 0 24 24"><path d="M4 12.5 9.5 18 20 6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg></span>
     {isLink && <span className={styles.addButtonProgress} aria-hidden="true"><span className={styles.addButtonProgressDot} /></span>}
   </button>;
