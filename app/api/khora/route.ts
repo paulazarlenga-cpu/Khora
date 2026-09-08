@@ -18,6 +18,11 @@ const code=(prefix:string)=>`${prefix}-${Date.now().toString(36).toUpperCase()}-
 const ok=(data:unknown={ok:true})=>Response.json(data);
 const fail=(e:unknown,status=400)=>Response.json({error:e instanceof Error?e.message:String(e)},{status});
 const required=(v:unknown,label:string)=>{const value=s(v);if(!value)throw new Error(`${label} es obligatorio`);return value};
+const collectionSlug=(value:string)=>value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase().trim().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,80)||"coleccion";
+const collectionItems=(value:unknown)=>{
+ const source=Array.isArray(value)?value as Array<Record<string,unknown>>:[];
+ return [...new Set(source.map((item)=>n(item.productId)).filter((id)=>Number.isInteger(id)&&id>0))];
+};
 
 const listDefinitionCodes=async(kind:SequentialCodeKind)=>{
  const rows=(await db().prepare(`SELECT cb.code FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE ${kind==="COMBO"?"p.type='COMBO'":"p.type<>'COMBO'"} ORDER BY cb.code`).all()).results as NRow[];
@@ -505,7 +510,21 @@ export async function GET(request:Request){try{
   await ensurePreviousFinanceClosure("cron@khora");
   return ok({ok:true,month:previousMonthKey()});
   }
-   const user=await getKhoraUser();if(!user)return fail("No autorizado",401); await ensureOrderSchema(); await expireStoreOrders(user.email??"sistema"); if(entity==="dashboard_snapshot") return ok(await dashboardSnapshot()); if(entity==="order_definition"){
+   const user=await getKhoraUser();if(!user)return fail("No autorizado",401); await ensureOrderSchema(); await expireStoreOrders(user.email??"sistema"); if(entity==="dashboard_snapshot") return ok(await dashboardSnapshot());
+ if(entity==="collections"){
+  const rows=(await db().prepare("SELECT c.id,c.name,c.slug,c.description,c.status,c.visible_in_store,c.sort_order,COUNT(ci.id)::integer item_count FROM collections c LEFT JOIN collection_items ci ON ci.collection_id=c.id GROUP BY c.id ORDER BY c.sort_order,c.name,c.id").all()).results;
+  return ok({rows});
+ }
+ if(entity==="collection_definition"){
+  const id=n(url.searchParams.get("id"));if(!id)return fail("Colección inválida");
+  const result=await db().batch([
+   db().prepare("SELECT id,name,slug,description,status,visible_in_store,sort_order FROM collections WHERE id=?").bind(id),
+   db().prepare("SELECT p.id,cb.code,cb.name,p.type,co.id combo_id,ci.sort_order FROM collection_items ci JOIN products p ON p.id=ci.product_id JOIN code_base cb ON cb.id=p.code_base_id LEFT JOIN combos co ON co.product_id=p.id WHERE ci.collection_id=? ORDER BY ci.sort_order,ci.id").bind(id)
+  ]);
+  const collection=result[0].results[0]??null;if(!collection)return fail("Colección inexistente",404);
+  return ok({collection,items:result[1].results});
+ }
+ if(entity==="order_definition"){
   const id=n(url.searchParams.get("id"));if(!id)return fail("Pedido inválido");
   const definition=await orderDefinition(id);if(!definition)return fail("Pedido inexistente",404);return ok(definition);
  }
@@ -854,6 +873,48 @@ const manufacturingLotAction=async(action:ManufacturingLotAction,b:Body,actorEma
 
 export async function POST(request:Request){try{const user=await getKhoraUser();if(!user)return fail("No autorizado",401);const b=await request.json() as Body,action=s(b.action),actorEmail=user.email??"sistema";
    await ensureOrderSchema();
+   if(action==="save_collection"){
+    const id=b.id?n(b.id):0,name=required(b.name,"El nombre"),description=s(b.description)||null,status=s(b.status).toUpperCase(),visibleInStore=b.visibleInStore!==false,sortOrder=Math.trunc(n(b.sortOrder)),productIds=collectionItems(b.items);
+    if(!["DRAFT","PUBLISHED"].includes(status))throw new Error("Elegí un estado válido");
+    if(!Number.isInteger(sortOrder)||sortOrder<1)throw new Error("El orden debe ser un entero mayor o igual a 1");
+    const saved=await withKhoraTransaction(async(tx)=>{
+     const duplicate=await tx.prepare("SELECT id FROM collections WHERE LOWER(TRIM(name))=LOWER(TRIM(?)) AND (?=0 OR id<>?)").bind(name,id,id).first<NRow>();
+     if(duplicate)throw new Error("Ya existe una colección con ese nombre");
+     const before=id?await tx.prepare("SELECT id,name,slug,description,status,visible_in_store,sort_order FROM collections WHERE id=? FOR UPDATE").bind(id).first<NRow>():null;
+     if(id&&!before)throw new Error("Colección inexistente");
+     if(productIds.length){
+      const placeholders=productIds.map(()=>"?").join(","),valid=(await tx.prepare(`SELECT id FROM products WHERE active=1 AND id IN (${placeholders})`).bind(...productIds).all()).results as NRow[];
+      if(valid.length!==productIds.length)throw new Error("Uno o más productos o combos ya no están disponibles");
+     }
+     let savedId=id,slug=s(before?.slug);
+     if(savedId){
+      await tx.prepare("UPDATE collections SET name=?,description=?,status=?,visible_in_store=?,sort_order=?,updated_at=CURRENT_TIMESTAMP WHERE id=?").bind(name,description,status,visibleInStore,sortOrder,savedId).run();
+     }else{
+      const base=collectionSlug(name),used=(await tx.prepare("SELECT slug FROM collections WHERE slug=? OR slug LIKE ?").bind(base,`${base}-%`).all()).results as NRow[],slugs=new Set(used.map((row)=>s(row.slug)));
+      slug=base;for(let suffix=2;slugs.has(slug);suffix+=1)slug=`${base.slice(0,Math.max(1,76-String(suffix).length))}-${suffix}`;
+      const created=await tx.prepare("INSERT INTO collections(name,slug,description,status,visible_in_store,sort_order) VALUES(?,?,?,?,?,?) RETURNING id").bind(name,slug,description,status,visibleInStore,sortOrder).first<NRow>();
+      savedId=n(created?.id);if(!savedId)throw new Error("No se pudo crear la colección");
+     }
+     await tx.prepare("DELETE FROM collection_items WHERE collection_id=?").bind(savedId).run();
+     for(const [index,productId] of productIds.entries())await tx.prepare("INSERT INTO collection_items(collection_id,product_id,sort_order) VALUES(?,?,?)").bind(savedId,productId,index+1).run();
+     const snapshot={name,slug,description,status,visibleInStore,sortOrder,productIds};
+     await tx.prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,before_json,after_json) VALUES(?,?,?,?,?,?,?)").bind(id?"UPDATE":"CREATE","COLLECTION",savedId,actorEmail,`${id?"Colección actualizada":"Colección creada"}: ${name}`,before?JSON.stringify(before):null,JSON.stringify(snapshot)).run();
+     return {id:savedId,slug};
+    });
+    return ok({ok:true,...saved});
+   }
+   if(action==="delete_collection"){
+    const id=n(b.id);if(!id)throw new Error("Colección inválida");
+    const deleted=await withKhoraTransaction(async(tx)=>{
+     const before=await tx.prepare("SELECT id,name,slug,description,status,visible_in_store,sort_order FROM collections WHERE id=? FOR UPDATE").bind(id).first<NRow>();
+     if(!before)throw new Error("Colección inexistente");
+     const itemRows=(await tx.prepare("SELECT product_id FROM collection_items WHERE collection_id=? ORDER BY sort_order,id").bind(id).all()).results as NRow[];
+     await tx.prepare("DELETE FROM collections WHERE id=?").bind(id).run();
+     await tx.prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,before_json) VALUES('DELETE','COLLECTION',?,?,?,?)").bind(id,actorEmail,`Colección eliminada: ${s(before.name)}`,JSON.stringify({...before,productIds:itemRows.map((row)=>n(row.product_id))})).run();
+     return {id,name:s(before.name)};
+    });
+    return ok({ok:true,deleted:true,...deleted});
+   }
    if(action==="save_setting" && s(b.key)==="store_whatsapp"){const normalized=normalizeWhatsAppNumber(b.value);if(normalized&&(normalized.length<8||normalized.length>15))throw new Error("Ingresá un número de WhatsApp válido en formato internacional.");const value=JSON.stringify(normalized||null);await db().prepare("INSERT INTO app_settings(key,value_json,updated_at) VALUES(?,?,CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json,updated_at=CURRENT_TIMESTAMP").bind("store_whatsapp",value).run();return ok()}
    if(action==="update_mixture_preparation"){
     const id=n(b.id),quantity=n(b.quantity);if(!id||!Number.isFinite(quantity)||quantity<=0)throw new Error("Preparación o cantidad inválida");

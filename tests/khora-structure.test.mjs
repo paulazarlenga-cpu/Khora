@@ -469,7 +469,7 @@ test("el alta unificada selecciona insumos guardados, cantidades, unidades y có
   assert.match(sections, /Costo estimado de fabricación/);
   assert.match(sections, /action: "update_combo_definition"/);
   assert.match(sections, /type="text" inputMode="decimal"/);
-  assert.match(sections, /Tabs tabs=\{\["Productos", "Combos", "Recetas", "Categorías"\]\}/);
+  assert.match(sections, /Tabs tabs=\{\["Productos", "Combos", "Recetas", "Categorías", "Colecciones"\]\}/);
   assert.match(sections, /document\.addEventListener\("focusin", selectNumberOnFocus\)/);
   assert.match(sections, /unitOptions\.map/);
   assert.match(route, /createWithSequentialCode\(\{kind:"PRODUCT"/);

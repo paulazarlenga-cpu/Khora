@@ -4,6 +4,8 @@ import { normalizeWhatsAppNumber } from "../../khora-whatsapp";
 
 type Row = Record<string, unknown>;
 type CartItemInput = { productId: number; quantity: number };
+type StoreCollection = { id: number; name: string; slug: string; description: string; sortOrder: number };
+type StoreCollectionMembership = { collectionId: number; sortOrder: number };
 
 type StoreProduct = {
   id: number;
@@ -18,6 +20,7 @@ type StoreProduct = {
   imagePath: string | null;
   published: boolean;
   unitsSold: number;
+  collectionMemberships: StoreCollectionMembership[];
 };
 
 const db = () => khoraDb;
@@ -117,6 +120,13 @@ const parseImagePath = (value: unknown) => {
   }
 };
 
+const parseCollectionMemberships = (value: unknown): StoreCollectionMembership[] => {
+  let source = value;
+  if (typeof source === "string") { try { source = JSON.parse(source); } catch { return []; } }
+  if (!Array.isArray(source)) return [];
+  return source.map((item) => item as Record<string, unknown>).map((item) => ({ collectionId: asNumber(item.collectionId ?? item.collection_id), sortOrder: asNumber(item.sortOrder ?? item.sort_order) })).filter((item) => Number.isInteger(item.collectionId) && item.collectionId > 0 && Number.isInteger(item.sortOrder) && item.sortOrder > 0);
+};
+
 const cleanCartItems = (value: unknown): CartItemInput[] => {
   if (!Array.isArray(value) || !value.length || value.length > 50) throw new Error("Revisá las cantidades del carrito e intentá nuevamente.");
   const grouped = new Map<number, number>();
@@ -135,13 +145,24 @@ async function listStoreProducts(token = ""): Promise<StoreProduct[]> {
       COALESCE(stock.available_stock,p.current_stock) available_stock,p.store_published,
       (SELECT value_json FROM app_settings WHERE key='product_image_'||p.id) image_path,
       (SELECT COALESCE(SUM(CASE WHEN s.status<>'CANCELLED' THEN si.quantity ELSE 0 END),0)
-        FROM sale_items si JOIN sales s ON s.id=si.sale_id WHERE si.product_id=p.id) units_sold
+        FROM sale_items si JOIN sales s ON s.id=si.sale_id WHERE si.product_id=p.id) units_sold,
+      COALESCE((SELECT json_agg(json_build_object('collectionId',ci.collection_id,'sortOrder',ci.sort_order) ORDER BY collection.sort_order,ci.sort_order,ci.id)
+        FROM collection_items ci JOIN collections collection ON collection.id=ci.collection_id
+        WHERE ci.product_id=p.id AND collection.status='PUBLISHED' AND collection.visible_in_store=TRUE),'[]'::json) collection_memberships
     FROM products p JOIN code_base cb ON cb.id=p.code_base_id LEFT JOIN categories c ON c.id=p.category_id
     LEFT JOIN khora_available_product_stock(?) stock ON stock.product_id=p.id
     WHERE p.active=1 AND p.store_published=TRUE AND p.sale_price_cents>0 ORDER BY cb.name`).bind(token || null).all<Row>();
   return result.results.map((row) => ({
-    id: asNumber(row.id), code: asString(row.code), name: asString(row.name), description: asString(row.description), category: asString(row.category) || "Colección KHORA", type: asString(row.type), priceCents: asNumber(row.sale_price_cents), stock: asNumber(row.current_stock), availableStock: asNumber(row.available_stock), imagePath: parseImagePath(row.image_path), published: Boolean(row.store_published), unitsSold: asNumber(row.units_sold),
+    id: asNumber(row.id), code: asString(row.code), name: asString(row.name), description: asString(row.description), category: asString(row.category) || (asString(row.type)==="COMBO"?"Combo":"Producto"), type: asString(row.type), priceCents: asNumber(row.sale_price_cents), stock: asNumber(row.current_stock), availableStock: asNumber(row.available_stock), imagePath: parseImagePath(row.image_path), published: Boolean(row.store_published), unitsSold: asNumber(row.units_sold), collectionMemberships: parseCollectionMemberships(row.collection_memberships),
   }));
+}
+
+async function listStoreCollections(): Promise<StoreCollection[]> {
+  const result=await db().prepare(`SELECT c.id,c.name,c.slug,COALESCE(c.description,'') description,c.sort_order
+    FROM collections c
+    WHERE c.status='PUBLISHED' AND c.visible_in_store=TRUE
+    ORDER BY c.sort_order,c.name,c.id`).all<Row>();
+  return result.results.map((row)=>({id:asNumber(row.id),name:asString(row.name),slug:asString(row.slug),description:asString(row.description),sortOrder:asNumber(row.sort_order)}));
 }
 
 async function getSettings() {
@@ -351,7 +372,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const entity = asString(url.searchParams.get("entity")) || "products";
     if (entity === "settings") return json(await getSettings());
-    if (entity === "products") { const token = asString(url.searchParams.get("token")); const products = await listStoreProducts(token); const reservation = token ? await reservationByToken(token) : null; const reservationExpiresAt = reservation && Boolean(reservation.is_active) ? asString(reservation.expires_at) : ""; return json({ products, reservationExpiresAt }); }
+    if (entity === "products") { const token = asString(url.searchParams.get("token")); const [products,collections,reservation] = await Promise.all([listStoreProducts(token),listStoreCollections(),token ? reservationByToken(token) : Promise.resolve(null)]); const reservationExpiresAt = reservation && Boolean(reservation.is_active) ? asString(reservation.expires_at) : ""; return json({ products,collections,reservationExpiresAt }); }
     if (entity === "product") {
       const id = asNumber(url.searchParams.get("id"));
       const product = (await listStoreProducts(asString(url.searchParams.get("token")))).find((item) => item.id === id);

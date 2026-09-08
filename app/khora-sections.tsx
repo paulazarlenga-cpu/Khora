@@ -12,6 +12,7 @@ import { nextSequentialCode } from "./khora-codes";
 import { KhoraIcon, moduleIcons, type KhoraIconName } from "./khora-icons";
 import { getOrderOperationalState } from "./khora-operations";
 import { Button } from "./khora-button";
+import { CollectionsManager, type CollectionRow } from "./khora-collections";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 type DashboardRow = Record<string, unknown>;
@@ -755,6 +756,7 @@ function Products({ search, onCreateMaterial }: { search: string; onCreateMateri
   const recipeData = useKhoraRows<RecipeRow>("recipes");
   const comboData = useKhoraRows<ComboRow>("combos");
   const categoryData = useKhoraRows<CategoryRow>("categories");
+  const collectionData = useKhoraRows<CollectionRow>("collections");
   const profitabilityData = useKhoraRows<ProfitabilityRow>("product_profitability");
   const [tab, setTab] = useState("Productos");
   const [selectedProduct, setSelectedProduct] = useState<ProductRow | null>(null);
@@ -782,13 +784,13 @@ function Products({ search, onCreateMaterial }: { search: string; onCreateMateri
   const lowStock = active.filter((product) => Number(product.current_stock) <= Number(product.minimum_stock));
   const stockValueCents = active.reduce((sum, product) => sum + Number(product.current_stock) * productCost(product), 0);
   const averageMargin = active.length ? active.reduce((sum, product) => sum + productMargin(product), 0) / active.length : 0;
-  const refreshAll = () => { productData.refresh(); recipeData.refresh(); comboData.refresh(); categoryData.refresh(); profitabilityData.refresh(); };
+  const refreshAll = () => { productData.refresh(); recipeData.refresh(); comboData.refresh(); categoryData.refresh(); collectionData.refresh(); profitabilityData.refresh(); };
   useEffect(() => { const paths = productData.rows.filter((product) => product.image_path).map((product) => ({ id: product.id, path: String(product.image_path) })); if (!paths.length) return; let active = true; Promise.all(paths.map(async (item) => { const { data, error } = await createSupabaseClient().storage.from("product-images").createSignedUrl(item.path, 3600); if (error) throw error; return [item.id, data.signedUrl] as const; })).then((entries) => { if (active) setPhotoUrls(Object.fromEntries(entries)); }).catch(() => undefined); return () => { active = false; }; }, [productData.rows]);
   async function uploadPhoto(product: ProductRow, file?: File) { if (!file) return; if (!file.type.startsWith("image/")) { setProductNotice("Elegí una imagen PNG, JPG o WebP."); return; } if (file.size > 8 * 1024 * 1024) { setProductNotice("La imagen no puede superar los 8 MB."); return; } setUploadingPhoto(product.id); try { const extension = file.name.split(".").pop()?.toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg", path = `products/${product.id}/${file.lastModified}-${file.size}.${extension}`, client = createSupabaseClient(), upload = await client.storage.from("product-images").upload(path, file, { contentType: file.type, upsert: true }); if (upload.error) throw upload.error; const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "save_product_image", productId: product.id, path }) }); const result = await response.json() as { error?: string }; if (!response.ok) throw new Error(result.error ?? "No se pudo vincular la imagen"); const signed = await client.storage.from("product-images").createSignedUrl(path, 3600); if (signed.error) throw signed.error; setPhotoUrls((current) => ({ ...current, [product.id]: signed.data.signedUrl })); productData.refresh(); setProductNotice(`Foto de ${product.name} guardada de forma privada.`); } catch (cause) { setProductNotice(cause instanceof Error ? cause.message : "No se pudo guardar la foto"); } finally { setUploadingPhoto(null); window.setTimeout(() => setProductNotice(""), 4200); } }
   function completed(message: string) { setShowProductForm(false); setShowComboForm(false); setEditingProduct(null); setEditingCombo(null); setSelectedProduct(null); setViewingRecipe(null); refreshAll(); dispatchKhoraRefresh(); setProductNotice(message); window.setTimeout(() => setProductNotice(""), 4200); }
-  const error = productData.error || recipeData.error || comboData.error || categoryData.error || profitabilityData.error;
+  const error = productData.error || recipeData.error || comboData.error || categoryData.error || collectionData.error || profitabilityData.error;
   return <div className="section-stack">
-    <Tabs tabs={["Productos", "Combos", "Recetas", "Categorías"]} active={tab} onChange={setTab} />
+    <Tabs tabs={["Productos", "Combos", "Recetas", "Categorías", "Colecciones"]} active={tab} onChange={setTab} />
     {error && <div className="inline-notice error" role="alert"><span>!</span>{error}</div>}
     {productNotice && <div className="inline-notice" role="status"><span>✓</span>{productNotice}</div>}
     {tab === "Productos" && <div className="product-create-row"><div><strong>Producto y receta son definiciones</strong><span>Crearlos no suma stock ni consume materias primas.</span></div><button className="primary-button" onClick={() => setShowProductForm(true)}>＋ Nuevo producto</button></div>}
@@ -796,6 +798,7 @@ function Products({ search, onCreateMaterial }: { search: string; onCreateMateri
     {tab === "Recetas" && <RecipeList rows={recipeData.rows} loading={recipeData.loading} onView={setViewingRecipe} onEdit={(recipe) => { const product = productData.rows.find((candidate) => Number(candidate.id) === Number(recipe.product_id)); if (product) setEditingProduct(product); else setProductNotice("No se encontró el producto asociado a esta receta."); }} />}
     {tab === "Combos" && <ComboList rows={comboData.rows} products={productData.rows} loading={comboData.loading} onCreate={() => setShowComboForm(true)} onEdit={setEditingCombo} onArchive={(combo) => setArchiveTarget({ kind: "COMBO", id: combo.id, name: combo.combo, code: combo.code })} />}
     {tab === "Categorías" && <SimpleCategories rows={categoryData.rows} />}
+    {tab === "Colecciones" && <CollectionsManager rows={collectionData.rows} loading={collectionData.loading} products={productData.rows.filter((product) => Boolean(product.active)).map((product) => ({ id: Number(product.id), code: String(product.code), name: String(product.name), type: String(product.type), comboId: product.combo_id ? Number(product.combo_id) : undefined }))} onChanged={(message) => { setProductNotice(message); window.setTimeout(() => setProductNotice(""), 4200); }} />}
     {selectedProduct && <ProductProfitabilityDetail product={selectedProduct} profitability={profitabilityData.rows.find((row) => Number(row.id) === Number(selectedProduct.id))} onEdit={() => { setEditingProduct(selectedProduct); setSelectedProduct(null); }} onArchive={() => setArchiveTarget({ kind: "PRODUCT", id: selectedProduct.id, name: selectedProduct.name, code: selectedProduct.code })} onClose={() => setSelectedProduct(null)} />}
     {viewingRecipe && <RecipeDetailDialog recipe={viewingRecipe} onClose={() => setViewingRecipe(null)} onEdit={() => { const product = productData.rows.find((candidate) => Number(candidate.id) === Number(viewingRecipe.product_id)); if (product) { setViewingRecipe(null); setEditingProduct(product); } else setProductNotice("No se encontró el producto asociado a esta receta."); }} />}
     {showProductForm && <ProductFormDialog onCancel={() => setShowProductForm(false)} onSaved={completed} onCreateMaterial={() => { setShowProductForm(false); onCreateMaterial(); }} />}
