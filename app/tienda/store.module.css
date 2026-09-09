@@ -2031,3 +2031,132 @@
 @media (prefers-reduced-motion:reduce) {
   .story .linkButton,.story .linkButton::after,.story .linkButton span { transition:none; }
 }
+/* Tienda móvil: el documento nunca debe crecer más allá del viewport. */
+@media (max-width:850px) {
+  .storeShell {
+    width:100%;
+    max-width:100%;
+    overflow-x:hidden;
+    overflow-x:clip;
+  }
+
+  .storeShell main,
+  .storeShell section,
+  .header,
+  .headerActions,
+  .detailGrid,
+  .customerLayout,
+  .cartLine,
+  .bestSellersViewport {
+    min-width:0;
+    max-width:100%;
+  }
+
+  .notice,
+  .error {
+    right:18px;
+    left:18px;
+    width:auto;
+    max-width:none;
+  }
+
+  .bestSellers {
+    max-width:100%;
+    overflow:hidden;
+  }
+}
+
+@media (max-width:560px) {
+  .header {
+    gap:12px;
+    padding-right:18px;
+    padding-left:18px;
+  }
+
+  .wordmark {
+    font-size:20px;
+    letter-spacing:.14em;
+  }
+
+  .headerActions,
+  .bagAction,
+  .bagAnimationFrame,
+  .textAction {
+    min-width:0;
+  }
+
+  .catalog,
+  .story,
+  .detailPage,
+  .narrowPage {
+    padding-right:18px;
+    padding-left:18px;
+  }
+
+  .grid {
+    grid-template-columns:minmax(0,1fr);
+    gap:34px;
+  }
+
+  .filters,
+  .categoryList {
+    width:100%;
+    min-width:0;
+  }
+
+  .categoryList {
+    flex-wrap:wrap;
+    overflow:visible;
+    gap:4px 18px;
+  }
+
+  .categoryList button {
+    padding-block:7px;
+  }
+
+  .detailInfo,
+  .cartLineInfo,
+  .formCard,
+  .summaryCard,
+  .cardBody {
+    min-width:0;
+  }
+
+  .detailInfo h1,
+  .cartLineInfo h3,
+  .summaryCard > div,
+  .confirmCard strong {
+    overflow-wrap:anywhere;
+  }
+
+  .quantityRow {
+    width:100%;
+  }
+
+  .quantityRow .primary,
+  .fullButton,
+  .cartEmptyCta,
+  .whatsappButton {
+    max-width:100%;
+  }
+
+  .reservation,
+  .reservationExpired {
+    align-items:flex-start;
+  }
+
+  .cartLine {
+    grid-template-columns:52px minmax(0,1fr) auto;
+    gap:10px;
+  }
+
+  .cartThumb {
+    width:52px;
+    height:62px;
+  }
+
+  .cartLine > strong {
+    min-width:0;
+    overflow-wrap:anywhere;
+  }
+}
