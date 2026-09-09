@@ -2160,3 +2160,17 @@
     overflow-wrap:anywhere;
   }
 }
+
+/* El manifiesto se lee en una sola columna en móvil; no se recorta al lado del título. */
+@media (max-width:850px) {
+  .story {
+    display:grid;
+    grid-template-columns:minmax(0,1fr);
+    gap:20px;
+  }
+
+  .story > p {
+    width:100%;
+    max-width:36rem;
+  }
+}
