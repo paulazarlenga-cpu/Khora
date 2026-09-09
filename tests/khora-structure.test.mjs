@@ -852,3 +852,9 @@ test("productos y combos separan contenido público, notas privadas y foto ofici
   assert.match(sections, /Solo visible en Administración/);
   assert.match(sections, /createSignedUrl\(path, 60 \* 60 \* 24 \* 365 \* 5\)/);
 });
+test("los costos de mezclas no mezclan una agregación con el rendimiento externo", async () => {
+  const route = await read("app/api/khora/route.ts");
+  assert.doesNotMatch(route, /NULLIF\(m\.yield_quantity,0\)/);
+  assert.match(route, /JOIN mixtures mix_cost ON mix_cost\.id=mfi\.mixture_id/);
+  assert.match(route, /NULLIF\(MAX\(mix_cost\.yield_quantity\),0\)/);
+});
