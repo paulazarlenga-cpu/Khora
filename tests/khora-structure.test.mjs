@@ -858,3 +858,9 @@ test("los costos de mezclas no mezclan una agregación con el rendimiento extern
   assert.match(route, /JOIN mixtures mix_cost ON mix_cost\.id=mfi\.mixture_id/);
   assert.match(route, /NULLIF\(MAX\(mix_cost\.yield_quantity\),0\)/);
 });
+
+test("la descripción pública del producto se muestra en el bloque de cuidado", async () => {
+  const store = await read("app/tienda/page.tsx");
+  assert.doesNotMatch(store, /<p className=\{styles\.detailDescription\}>/);
+  assert.match(store, /<div className=\{styles\.accordion\}><p>Materiales y cuidado<\/p><span>\{product\.description \|\| "La información disponible de cada producto se actualiza desde KHORA Administración\."\}<\/span><\/div>/);
+});
