@@ -864,3 +864,13 @@ test("la descripción pública del producto se muestra en el bloque de cuidado",
   assert.doesNotMatch(store, /<p className=\{styles\.detailDescription\}>/);
   assert.match(store, /<div className=\{styles\.accordion\}><p>Materiales y cuidado<\/p><span>\{product\.description \|\| "La información disponible de cada producto se actualiza desde KHORA Administración\."\}<\/span><\/div>/);
 });
+test("combos comparten la experiencia operativa de productos", async () => {
+  const sections = await read("app/khora-sections.tsx");
+  assert.match(sections, /function ComboList[\s\S]*Combos activos/);
+  assert.match(sections, /function ComboList[\s\S]*<Toolbar placeholder="Buscar producto o código…"/);
+  assert.match(sections, /function ComboList[\s\S]*<div className="product-grid">/);
+  assert.match(sections, /function ComboList[\s\S]*<DefinitionCard/);
+  assert.match(sections, /function ComboList[\s\S]*photoUrls\[product\.id\]/);
+  assert.match(sections, /selectedProduct\.type === "COMBO"/);
+  assert.match(sections, /Archivar combo/);
+});
