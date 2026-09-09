@@ -46,6 +46,7 @@ function ensureStoreSchema() {
   if (!schemaPromise) {
     schemaPromise = db().batch([
       db().prepare("ALTER TABLE products ADD COLUMN IF NOT EXISTS store_published BOOLEAN NOT NULL DEFAULT TRUE"),
+      db().prepare("ALTER TABLE products ADD COLUMN IF NOT EXISTS store_description TEXT"),
       db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS store_phone_normalized TEXT"),
       db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS phone_normalized TEXT"),
       db().prepare("ALTER TABLE clients ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'MANUAL'"),
@@ -114,9 +115,15 @@ const parseImagePath = (value: unknown) => {
   if (!value) return null;
   try {
     const parsed = JSON.parse(asString(value));
-    return typeof parsed === "string" ? parsed : null;
+    if (typeof parsed === "string") return /^(https?:|\/)/.test(parsed) ? parsed : null;
+    if (parsed && typeof parsed === "object" && "url" in parsed) {
+      const url = asString((parsed as { url?: unknown }).url);
+      return /^https:\/\//.test(url) ? url : null;
+    }
+    return null;
   } catch {
-    return asString(value) || null;
+    const url = asString(value);
+    return /^(https?:|\/)/.test(url) ? url : null;
   }
 };
 
@@ -141,7 +148,7 @@ const cleanCartItems = (value: unknown): CartItemInput[] => {
 };
 
 async function listStoreProducts(token = ""): Promise<StoreProduct[]> {
-  const result = await db().prepare(`SELECT p.id,cb.code,cb.name,COALESCE(cb.description,'') description,COALESCE(c.name,'') category,p.type,p.sale_price_cents,p.current_stock,
+  const result = await db().prepare(`SELECT p.id,cb.code,cb.name,COALESCE(p.store_description,'') description,COALESCE(c.name,'') category,p.type,p.sale_price_cents,p.current_stock,
       COALESCE(stock.available_stock,p.current_stock) available_stock,p.store_published,
       (SELECT value_json FROM app_settings WHERE key='product_image_'||p.id) image_path,
       (SELECT COALESCE(SUM(CASE WHEN s.status<>'CANCELLED' THEN si.quantity ELSE 0 END),0)

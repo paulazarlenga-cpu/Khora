@@ -344,7 +344,7 @@ test("la Fase C crea producto y receta por IDs sin mover inventario", async () =
   assert.match(route, /action==="save_product_with_recipe"/);
   assert.match(route, /new Set\(materialIds\)\.size!==materialIds\.length/);
   assert.match(route, /INSERT INTO recipe_items\(recipe_id,material_id,quantity_per_yield\)/);
-  assert.match(route, /INSERT INTO products\(code_base_id,type,sale_price_cents,estimated_cost_cents,current_stock,minimum_stock,profit_percentage\)/);
+  assert.match(route, /INSERT INTO products\(code_base_id,category_id,type,store_description,sale_price_cents,estimated_cost_cents,current_stock,minimum_stock,profit_percentage\)/);
   assert.match(route, /hasRecipe\?"MANUFACTURED":"SIMPLE"/);
   const productAction = route.match(/if\(action==="save_product_with_recipe"\)[\s\S]*?(?=\n  if\(action==="update_product_definition")/)?.[0] ?? "";
   assert.doesNotMatch(productAction, /stock_movements|manufacturing_batches|UPDATE raw_materials SET current_stock/);
@@ -828,4 +828,27 @@ test("la preparación de mezclas usa una cantidad única y conserva FIFO histór
   assert.match(styles, /\.mixture-prepare-dialog \.mixture-stock-summary\{[\s\S]*flex:0 0 auto/);
   assert.match(schema, /export const mixturePreparations = sqliteTable/);
   assert.match(schema, /theoreticalQuantity:real\("theoretical_quantity"\)/);
+});
+test("productos y combos separan contenido público, notas privadas y foto oficial", async () => {
+  const [adminRoute, storeRoute, sections, migration] = await Promise.all([
+    read("app/api/khora/route.ts"),
+    read("app/api/tienda/route.ts"),
+    read("app/khora-sections.tsx"),
+    read("supabase/migrations/202609090001_khora_product_content.sql"),
+  ]);
+
+  assert.match(migration, /add column if not exists store_description text/i);
+  assert.match(adminRoute, /COALESCE\(p\.store_description,''\) description/);
+  assert.match(adminRoute, /COALESCE\(cb\.description,''\) private_notes/);
+  assert.match(adminRoute, /action==="save_product_image"/);
+  assert.match(adminRoute, /JSON\.stringify\(\{path,url\}\)/);
+  assert.match(adminRoute, /SET category_id=\?,type=\?,store_description=\?/);
+  assert.match(storeRoute, /COALESCE\(p\.store_description,''\) description/);
+  assert.doesNotMatch(storeRoute, /cb\.description(?:\s+AS)?\s+description/i);
+  assert.doesNotMatch(storeRoute, /private_notes/);
+  assert.match(storeRoute, /"url" in parsed/);
+  assert.match(sections, /function OfficialProductPhotoField/);
+  assert.match(sections, /Visible en KHORA Tienda/);
+  assert.match(sections, /Solo visible en Administración/);
+  assert.match(sections, /createSignedUrl\(path, 60 \* 60 \* 24 \* 365 \* 5\)/);
 });
