@@ -874,3 +874,11 @@ test("combos comparten la experiencia operativa de productos", async () => {
   assert.match(sections, /selectedProduct\.type === "COMBO"/);
   assert.match(sections, /Archivar combo/);
 });
+test("el detalle de rentabilidad muestra las notas privadas existentes", async () => {
+  const sections = await read("app/khora-sections.tsx");
+  assert.match(sections, /useKhoraObject<\{ product\?: \{ notes\?: string \} \}>\(`\/api\/khora\?entity=product_detail&id=\$\{product\.id\}`\)/);
+  assert.match(sections, /const detailNote = String\(detail\.data\?\.product\?\.notes \?\? ""\)\.trim\(\);/);
+  assert.match(sections, /const internalNote = detailNote \|\| String\(product\.private_notes \?\? ""\)\.trim\(\);/);
+  assert.match(sections, /\{hasPrivateNote && <section className="product-internal-note"/);
+  assert.doesNotMatch(sections, /hasMeaningfulNote/);
+});
