@@ -332,7 +332,10 @@ function BestSellersSection({ products, onOpen }: { products: Product[]; onOpen:
   const applyTransformRef = useRef<() => void>(() => undefined);
   const updateTiltsRef = useRef<() => void>(() => undefined);
   const [reducedMotion, setReducedMotion] = useState(false);
-  const doubledProducts = [...products, ...products];
+  // Tres copias permiten mantener siempre una repetición idéntica a ambos lados
+  // de la vista. El desplazamiento se conserva en la copia central, por lo que
+  // al normalizar la posición nunca se revela un borde de la cinta.
+  const loopedProducts = [...products, ...products, ...products];
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -348,10 +351,12 @@ function BestSellersSection({ products, onOpen }: { products: Product[]; onOpen:
     if (!viewport || !rail || !products.length) return;
     const speed = 22;
     const normalize = () => {
-      const loopWidth = loopWidthRef.current;
-      if (!loopWidth) return;
-      while (positionRef.current >= loopWidth) positionRef.current -= loopWidth;
-      while (positionRef.current < 0) positionRef.current += loopWidth;
+      const cycleWidth = loopWidthRef.current;
+      if (!cycleWidth) return;
+      const cycleStart = cycleWidth;
+      const cycleEnd = cycleStart + cycleWidth;
+      while (positionRef.current >= cycleEnd) positionRef.current -= cycleWidth;
+      while (positionRef.current < cycleStart) positionRef.current += cycleWidth;
     };
     const cards = () => Array.from(rail.querySelectorAll<HTMLElement>("[data-best-seller-card]"));
     const applyTransform = () => { rail.style.transform = `translate3d(${-positionRef.current}px, 0, 0)`; };
@@ -367,10 +372,15 @@ function BestSellersSection({ products, onOpen }: { products: Product[]; onOpen:
       });
     };
     const measure = () => {
-      loopWidthRef.current = rail.scrollWidth / 2;
-      const first = rail.querySelector<HTMLElement>("[data-best-seller-card]");
+      const allCards = cards();
+      const first = allCards[0];
+      const firstRepeatedCard = allCards[products.length];
+      // Medimos de inicio a inicio de cada grupo: no incluye el padding final
+      // de la tira, que era lo que hacía visible el salto al reiniciar.
+      loopWidthRef.current = first && firstRepeatedCard ? firstRepeatedCard.offsetLeft - first.offsetLeft : 0;
       const gap = Number.parseFloat(window.getComputedStyle(rail).gap || "0") || 0;
       cardStepRef.current = (first?.getBoundingClientRect().width || 0) + gap;
+      positionRef.current += loopWidthRef.current;
       normalize();
       applyTransform();
       updateTilts();
@@ -464,7 +474,7 @@ function BestSellersSection({ products, onOpen }: { products: Product[]; onOpen:
     </div>
     <div className={styles.bestSellersViewport} ref={viewportRef} onClickCapture={handleClickCapture} onMouseEnter={() => { if (!draggingRef.current) pausedRef.current = true; }} onMouseLeave={() => { if (!draggingRef.current) scheduleResume(300); }} onPointerDown={handlePointerDown} onPointerMove={handlePointerMove} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}>
       <div className={styles.bestSellersRail} ref={railRef}>
-        {doubledProducts.map((product, index) => <BestSellerCard key={`${product.id}-${index < products.length ? "original" : "duplicate"}`} product={product} rank={index % products.length} onOpen={() => onOpen(product)} />)}
+        {loopedProducts.map((product, index) => <BestSellerCard key={`${product.id}-${Math.floor(index / products.length)}`} product={product} rank={index % products.length} onOpen={() => onOpen(product)} />)}
       </div>
       <span className={`${styles.bestSellersFade} ${styles.bestSellersFadeLeft}`} aria-hidden="true" />
       <span className={`${styles.bestSellersFade} ${styles.bestSellersFadeRight}`} aria-hidden="true" />

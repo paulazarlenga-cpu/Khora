@@ -1997,3 +1997,37 @@
 /* Las colecciones conservan una sola fila navegable también en pantallas chicas. */
 .categoryList { scrollbar-width:none; overscroll-behavior-inline:contain; }
 .categoryList::-webkit-scrollbar { display:none; }
+
+/* Llamado editorial: subrayado vivo y flecha que acompaña el gesto de avanzar. */
+.story .linkButton {
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  overflow:hidden;
+  transition:color .28s ease,letter-spacing .28s ease;
+}
+.story .linkButton::after {
+  content:"";
+  position:absolute;
+  right:0;
+  bottom:3px;
+  left:0;
+  height:1px;
+  background:currentColor;
+  opacity:.48;
+  transform:scaleX(.28);
+  transform-origin:left center;
+  transition:transform .34s cubic-bezier(.2,.65,.25,1),opacity .28s ease;
+}
+.story .linkButton span {
+  margin-left:0;
+  transition:transform .34s cubic-bezier(.2,.65,.25,1);
+}
+.story .linkButton:hover,.story .linkButton:focus-visible { letter-spacing:.15em; }
+.story .linkButton:hover::after,.story .linkButton:focus-visible::after { opacity:1; transform:scaleX(1); }
+.story .linkButton:hover span,.story .linkButton:focus-visible span { transform:translateX(5px); }
+.story .linkButton:focus-visible { outline:1px solid var(--khora-green); outline-offset:6px; }
+@media (prefers-reduced-motion:reduce) {
+  .story .linkButton,.story .linkButton::after,.story .linkButton span { transition:none; }
+}
