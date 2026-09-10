@@ -86,3 +86,11 @@ test("las selecciones conservan tipo y orden y pueden reagruparse", () => {
     option_id: row.optionId, kind: row.kind, sort_order: row.sortOrder,
   }))), parsed.profile);
 });
+test("la API administrativa expone catálogo activo y perfil agrupado", async () => {
+  const route = await read("app/api/khora/route.ts");
+  assert.match(route, /entity==="sensory_options"/);
+  assert.match(route, /FROM sensory_options WHERE active=TRUE/);
+  assert.match(route, /FROM product_sensory_options WHERE product_id=\?/);
+  assert.match(route, /sensory_profile:sensoryProfileFromRows/);
+  assert.match(route, /ORDER BY kind,sort_order,label,id/);
+});
