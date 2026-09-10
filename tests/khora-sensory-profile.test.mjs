@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  emptySensoryProfile,
+  parseSensoryProfile,
+  sensoryProfileFromRows,
+  sensorySelections,
+} from "../app/khora-sensory.ts";
 
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
@@ -48,4 +54,35 @@ test("el ejecutor aplica y verifica únicamente la migración sensorial", async 
   assert.match(runner, /relrowsecurity/);
   assert.match(runner, /has_table_privilege/);
   assert.doesNotMatch(runner, /console\.log\([^)]*databaseUrl/);
+});
+test("el parser distingue perfil omitido de perfil vacío y deduplica", () => {
+  assert.deepEqual(parseSensoryProfile(undefined), { provided: false, profile: emptySensoryProfile() });
+  const parsed = parseSensoryProfile({
+    families: [2, 2, 1], notes: [], sensations: [4], intensity: 8,
+    rooms: [9, 9], moment: null,
+  });
+  assert.equal(parsed.provided, true);
+  assert.deepEqual(parsed.profile.families, [2, 1]);
+  assert.deepEqual(parsed.profile.rooms, [9]);
+});
+
+test("el parser rechaza formas e IDs inválidos", () => {
+  assert.throws(() => parseSensoryProfile({ families: "Dulce" }), /familias/i);
+  assert.throws(() => parseSensoryProfile({ families: [-1] }), /entero positivo/i);
+  assert.throws(() => parseSensoryProfile({ intensity: [1, 2] }), /intensidad/i);
+});
+
+test("las selecciones conservan tipo y orden y pueden reagruparse", () => {
+  const parsed = parseSensoryProfile({
+    families: [2, 1], notes: [3], sensations: [], intensity: 4,
+    rooms: [5], moment: 6,
+  });
+  const selections = sensorySelections(parsed.profile);
+  assert.deepEqual(selections.slice(0, 2), [
+    { optionId: 2, kind: "FAMILY", sortOrder: 0 },
+    { optionId: 1, kind: "FAMILY", sortOrder: 1 },
+  ]);
+  assert.deepEqual(sensoryProfileFromRows(selections.map((row) => ({
+    option_id: row.optionId, kind: row.kind, sort_order: row.sortOrder,
+  }))), parsed.profile);
 });
