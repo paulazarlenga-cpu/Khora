@@ -94,3 +94,19 @@ test("la API administrativa expone catálogo activo y perfil agrupado", async ()
   assert.match(route, /sensory_profile:sensoryProfileFromRows/);
   assert.match(route, /ORDER BY kind,sort_order,label,id/);
 });
+test("crear y editar validan y guardan el perfil en la transacción existente", async () => {
+  const route = await read("app/api/khora/route.ts");
+  assert.match(route, /parseSensoryProfile\(b\.sensoryProfile\)/);
+  assert.match(route, /SELECT id,kind FROM sensory_options WHERE active=TRUE AND id IN/);
+  assert.match(route, /La opción sensorial .* no corresponde/i);
+  assert.match(route, /INSERT INTO product_sensory_options/);
+  assert.match(route, /DELETE FROM product_sensory_options WHERE product_id=\?/);
+  assert.match(route, /if\(parsedSensory\.provided\)/);
+  assert.match(route, /withKhoraTransaction\(async\(tx\)=>/);
+});
+
+test("el flujo de combos no recibe persistencia sensorial", async () => {
+  const route = await read("app/api/khora/route.ts");
+  const comboBlock = route.slice(route.indexOf('if(action==="update_combo_definition")'), route.indexOf('if(action==="archive_product_definition"'));
+  assert.doesNotMatch(comboBlock, /product_sensory_options|sensoryProfile/);
+});

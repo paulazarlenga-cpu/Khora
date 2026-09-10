@@ -1,4 +1,4 @@
-import { khoraDb, withKhoraTransaction } from "@/db/postgres";
+import { khoraDb, withKhoraTransaction, type KhoraTransaction } from "@/db/postgres";
 import { getKhoraUser } from "@/lib/supabase/auth";
 import { categoryPrefix, convertUnit, normalizePrefix, normalizeUnit, suggestMaterialCode, weightedAverageCost } from "../../khora-inventory";
 import { allocateFinishedStockFIFO, type FinishedLot } from "../../khora-fifo";
@@ -7,7 +7,7 @@ import { calculateFinanceTotals } from "../../khora-finance-core";
 import { isValidClientPhone, normalizeClientEmail, normalizeClientPhone } from "../../khora-client";
 import { normalizeWhatsAppNumber } from "../../khora-whatsapp";
 import { createWithGeneratedCode, createWithSequentialCode, nextSequentialCode, type SequentialCodeKind } from "../../khora-codes";
-import { sensoryProfileFromRows } from "../../khora-sensory";
+import { parseSensoryProfile, sensoryProfileFromRows, sensorySelections, type SensorySelection } from "../../khora-sensory";
 type Body=Record<string,unknown>;
 type NRow=Record<string,number|string|null|boolean|undefined> & { current_stock?: number|string|null; material?: number|string|null; material_id?: number|string|null; current_cost_cents?: number|string|null; available?: number|string|null; unit?: string|null; required?: number; subtotal_cents?: number|null; raw_material_id?: number|string|null; material_active?: boolean; cost_available?: boolean };
 type Statement=ReturnType<typeof khoraDb.prepare>;
@@ -25,6 +25,26 @@ const collectionItems=(value:unknown)=>{
  return [...new Set(source.map((item)=>n(item.productId)).filter((id)=>Number.isInteger(id)&&id>0))];
 };
 
+type SensoryQuery=Pick<KhoraTransaction,"prepare">;
+
+async function validateSensorySelections(selections:SensorySelection[],queryDb:SensoryQuery=db()){
+ if(!selections.length)return;
+ const ids=selections.map((selection)=>selection.optionId);
+ const placeholders=ids.map(()=>"?").join(",");
+ const rows=(await queryDb.prepare(`SELECT id,kind FROM sensory_options WHERE active=TRUE AND id IN (${placeholders})`).bind(...ids).all()).results as NRow[];
+ const actual=new Map(rows.map((row)=>[n(row.id),s(row.kind)]));
+ for(const selection of selections){
+  if(actual.get(selection.optionId)!==selection.kind){
+   throw new Error(`La opción sensorial ${selection.optionId} no corresponde a ${selection.kind} o ya no está activa.`);
+  }
+ }
+}
+
+function appendSensoryInserts(queryDb:SensoryQuery,q:Statement[],productIdSql:string,productIdBindings:unknown[],selections:SensorySelection[]){
+ for(const selection of selections){
+  q.push(queryDb.prepare(`INSERT INTO product_sensory_options(product_id,option_id,kind,sort_order) VALUES(${productIdSql},?,?,?)`).bind(...productIdBindings,selection.optionId,selection.kind,selection.sortOrder));
+ }
+}
 const listDefinitionCodes=async(kind:SequentialCodeKind)=>{
  const rows=(await db().prepare(`SELECT cb.code FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE ${kind==="COMBO"?"p.type='COMBO'":"p.type<>'COMBO'"} ORDER BY cb.code`).all()).results as NRow[];
  return rows.map(row=>s(row.code)).filter(Boolean);
@@ -1121,6 +1141,8 @@ export async function POST(request:Request){try{const user=await getKhoraUser();
  if(action==="delete_material"){const id=n(b.id),row=await db().prepare("SELECT code_base_id FROM raw_materials WHERE id=?").bind(id).first<NRow>();if(!row)throw new Error("Materia prima inexistente");const refs=await db().prepare("SELECT (SELECT COUNT(*) FROM raw_material_purchases WHERE material_id=?) raw_material_purchases,(SELECT COUNT(*) FROM recipe_items WHERE material_id=?) recipe_items,(SELECT COUNT(*) FROM manufacturing_materials WHERE material_id=?) manufacturing_materials,(SELECT COUNT(*) FROM combo_material_items WHERE material_id=?) combo_material_items,(SELECT COUNT(*) FROM combo_batch_materials WHERE material_id=?) combo_batch_materials,(SELECT COUNT(*) FROM material_sale_items WHERE material_id=?) material_sale_items,(SELECT COUNT(*) FROM stock_movements WHERE material_id=?) stock_movements").bind(id,id,id,id,id,id,id).first<NRow>();const referenceCount=["raw_material_purchases","recipe_items","manufacturing_materials","combo_material_items","combo_batch_materials","material_sale_items","stock_movements"].reduce((sum,key)=>sum+n(refs?.[key]),0);if(referenceCount>0)await db().batch([db().prepare("UPDATE raw_materials SET active=0 WHERE id=?").bind(id),db().prepare("UPDATE code_base SET active=0 WHERE id=?").bind(row.code_base_id)]);else await db().batch([db().prepare("DELETE FROM raw_materials WHERE id=?").bind(id),db().prepare("DELETE FROM code_base WHERE id=?").bind(row.code_base_id)]);return ok({ok:true,deactivated:referenceCount>0,referenceCount})}
   if(action==="save_product_with_recipe"){
    const name=required(b.name,"El nombre"),pricingMode=s(b.pricingMode)==="target_margin"?"target_margin":"manual_price",targetMargin=b.targetMargin===null||b.targetMargin===undefined?null:n(b.targetMargin),description=s(b.description)||null,privateNotes=s(b.privateNotes??b.notes)||null,categoryId=b.categoryId?n(b.categoryId):null,items=(b.items as Array<{materialId:number,quantity:number}>)||[],mixtureItems=(b.mixtureItems as Array<{mixtureId:number,quantity:number}>)||[],hasRecipe=b.hasRecipe!==false;
+   const parsedSensory=parseSensoryProfile(b.sensoryProfile);
+   const sensory=parsedSensory.provided?sensorySelections(parsedSensory.profile):[];
   const enteredPrice=n(b.salePriceCents);
   if(pricingMode==="manual_price"&&(!Number.isFinite(enteredPrice)||enteredPrice<0))throw new Error("El precio no puede ser negativo");
   if(pricingMode==="target_margin"&&(targetMargin===null||!Number.isFinite(targetMargin)||targetMargin<0))throw new Error("Ingresá un margen deseado válido.");
@@ -1137,26 +1159,60 @@ export async function POST(request:Request){try{const user=await getKhoraUser();
    if(mixtureItems.length){const placeholders=mixtureIds.map(()=>"?").join(","),rows=(await db().prepare(`SELECT m.id,COALESCE((SELECT ml.unit_cost_cents FROM mixture_lots ml WHERE ml.mixture_id=m.id AND ml.status='ACTIVE' AND ml.available_quantity>0 ORDER BY ml.prepared_at DESC,ml.id DESC LIMIT 1),(SELECT ROUND(SUM(mfi.quantity_per_yield*rm.current_cost_cents)::numeric/NULLIF(MAX(mix_cost.yield_quantity),0)) FROM mixture_formula_items mfi JOIN raw_materials rm ON rm.id=mfi.material_id JOIN mixtures mix_cost ON mix_cost.id=mfi.mixture_id WHERE mfi.mixture_id=m.id)) current_cost_cents FROM mixtures m WHERE m.active=1 AND m.id IN (${placeholders})`).bind(...mixtureIds).all()).results as NRow[];if(rows.length!==mixtureIds.length)throw new Error("Una mezcla de la receta ya no está activa");const costs=new Map(rows.map(row=>[n(row.id),n(row.current_cost_cents)]));estimatedCost+=Math.round(mixtureItems.reduce((sum,item)=>sum+n(item.quantity)*(costs.get(n(item.mixtureId))??0),0))}
   if(pricingMode==="target_margin"&&estimatedCost<=0)throw new Error("Necesitás un costo válido para calcular el precio por margen.");
   const price=pricingMode==="target_margin"?Math.round(estimatedCost*(1+(targetMargin??0)/100)):Math.round(enteredPrice),margin=estimatedCost>0?Math.round((price-estimatedCost)*1000/estimatedCost)/10:0;
-  const created=await createWithSequentialCode({kind:"PRODUCT",listCodes:()=>listDefinitionCodes("PRODUCT"),create:async visible=>{
-    const q=[db().prepare("INSERT INTO code_base(code,name,description,entity_type) VALUES(?,?,?,'PRODUCT')").bind(visible,name,privateNotes),db().prepare("INSERT INTO products(code_base_id,category_id,type,store_description,sale_price_cents,estimated_cost_cents,current_stock,minimum_stock,profit_percentage) VALUES((SELECT id FROM code_base WHERE code=?),?,?,?,?,?,0,?,?)").bind(visible,categoryId,hasRecipe?"MANUFACTURED":"SIMPLE",description,price,estimatedCost,Math.max(0,n(b.minimumStock)),margin)];
-    if(hasRecipe){q.push(db().prepare("INSERT INTO recipes(product_id,yield_quantity,active,updated_at) VALUES((SELECT p.id FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?),1,1,CURRENT_TIMESTAMP)").bind(visible));for(const item of items)q.push(db().prepare("INSERT INTO recipe_items(recipe_id,material_id,quantity_per_yield) VALUES((SELECT r.id FROM recipes r JOIN products p ON p.id=r.product_id JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?),?,?)").bind(visible,n(item.materialId),n(item.quantity)));for(const item of mixtureItems)q.push(db().prepare("INSERT INTO recipe_mixture_items(recipe_id,mixture_id,quantity_per_yield) VALUES((SELECT r.id FROM recipes r JOIN products p ON p.id=r.product_id JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?),?,?)").bind(visible,n(item.mixtureId),n(item.quantity)))}
-    q.push(db().prepare("UPDATE products SET pricing_mode=?,target_margin_percentage=? WHERE code_base_id=(SELECT id FROM code_base WHERE code=?)").bind(pricingMode,targetMargin,visible),db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','PRODUCT',(SELECT p.id FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?),?,?,?)").bind(visible,actorEmail,`Producto ${visible} creado sin modificar stock`,JSON.stringify({estimatedCostCents:estimatedCost,marginPercent:margin,pricingMode,targetMarginPercentage:targetMargin,recipeItems:items.length,recipeMixtureItems:mixtureItems.length,manufactured:hasRecipe})));
-   await db().batch(q);
-   return db().prepare("SELECT p.id,cb.code,cb.name,p.current_stock,p.sale_price_cents,p.estimated_cost_cents,p.profit_percentage,p.pricing_mode,p.target_margin_percentage FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?").bind(visible).first();
-  }});
-   return ok({ok:true,product:created.value})
+  const created=await createWithSequentialCode({kind:"PRODUCT",listCodes:()=>listDefinitionCodes("PRODUCT"),create:async visible=>withKhoraTransaction(async(tx)=>{
+    await validateSensorySelections(sensory,tx);
+    const q:Statement[]=[
+     tx.prepare("INSERT INTO code_base(code,name,description,entity_type) VALUES(?,?,?,'PRODUCT')").bind(visible,name,privateNotes),
+     tx.prepare("INSERT INTO products(code_base_id,category_id,type,store_description,sale_price_cents,estimated_cost_cents,current_stock,minimum_stock,profit_percentage) VALUES((SELECT id FROM code_base WHERE code=?),?,?,?,?,?,0,?,?)").bind(visible,categoryId,hasRecipe?"MANUFACTURED":"SIMPLE",description,price,estimatedCost,Math.max(0,n(b.minimumStock)),margin),
+    ];
+    if(hasRecipe){
+     q.push(tx.prepare("INSERT INTO recipes(product_id,yield_quantity,active,updated_at) VALUES((SELECT p.id FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?),1,1,CURRENT_TIMESTAMP)").bind(visible));
+     for(const item of items)q.push(tx.prepare("INSERT INTO recipe_items(recipe_id,material_id,quantity_per_yield) VALUES((SELECT r.id FROM recipes r JOIN products p ON p.id=r.product_id JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?),?,?)").bind(visible,n(item.materialId),n(item.quantity)));
+     for(const item of mixtureItems)q.push(tx.prepare("INSERT INTO recipe_mixture_items(recipe_id,mixture_id,quantity_per_yield) VALUES((SELECT r.id FROM recipes r JOIN products p ON p.id=r.product_id JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?),?,?)").bind(visible,n(item.mixtureId),n(item.quantity)));
+    }
+    q.push(tx.prepare("UPDATE products SET pricing_mode=?,target_margin_percentage=? WHERE code_base_id=(SELECT id FROM code_base WHERE code=?)").bind(pricingMode,targetMargin,visible));
+    appendSensoryInserts(tx,q,"(SELECT p.id FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?)",[visible],sensory);
+    q.push(tx.prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,after_json) VALUES('CREATE','PRODUCT',(SELECT p.id FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?),?,?,?)").bind(visible,actorEmail,`Producto ${visible} creado sin modificar stock`,JSON.stringify({estimatedCostCents:estimatedCost,marginPercent:margin,pricingMode,targetMarginPercentage:targetMargin,recipeItems:items.length,recipeMixtureItems:mixtureItems.length,manufactured:hasRecipe,sensorySelections:sensory.length,sensoryKinds:[...new Set(sensory.map((item)=>item.kind))]})));
+    await tx.batch(q);
+    return tx.prepare("SELECT p.id,cb.code,cb.name,p.current_stock,p.sale_price_cents,p.estimated_cost_cents,p.profit_percentage,p.pricing_mode,p.target_margin_percentage FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE cb.code=?").bind(visible).first();
+   })});
+   return ok({ok:true,product:created.value});
   }
-  if(action==="update_product_definition"){
+    if(action==="update_product_definition"){
     const productId=n(b.id),name=required(b.name,"El nombre"),pricingMode=s(b.pricingMode)==="target_margin"?"target_margin":"manual_price",targetMargin=b.targetMargin===null||b.targetMargin===undefined?null:n(b.targetMargin),enteredPrice=n(b.salePriceCents),minimum=Math.max(0,n(b.minimumStock)),description=s(b.description)||null,privateNotes=s(b.privateNotes??b.notes)||null,categoryId=b.categoryId?n(b.categoryId):null,hasRecipe=b.hasRecipe!==false,items=(b.items as Array<{materialId:number,quantity:number}>)||[],mixtureItems=(b.mixtureItems as Array<{mixtureId:number,quantity:number}>)||[];
+    const parsedSensory=parseSensoryProfile(b.sensoryProfile);
+    const sensory=parsedSensory.provided?sensorySelections(parsedSensory.profile):[];
     if(pricingMode==="manual_price"&&(!Number.isFinite(enteredPrice)||enteredPrice<0))throw new Error("El precio no puede ser negativo");if(pricingMode==="target_margin"&&(targetMargin===null||!Number.isFinite(targetMargin)||targetMargin<0))throw new Error("Ingresá un margen deseado válido.");if(hasRecipe&&!items.length&&!mixtureItems.length)throw new Error("Agregá al menos una materia prima o mezcla a la receta.");
     const materialIds=items.map(item=>n(item.materialId));if(new Set(materialIds).size!==materialIds.length)throw new Error("No repitas materias primas en la receta");if(items.some(item=>!n(item.materialId)||n(item.quantity)<=0))throw new Error("Revisá las cantidades de la receta");const mixtureIds=mixtureItems.map(item=>n(item.mixtureId));if(new Set(mixtureIds).size!==mixtureIds.length)throw new Error("No repitas mezclas en la receta");if(mixtureItems.some(item=>!n(item.mixtureId)||n(item.quantity)<=0))throw new Error("Revisá las cantidades de las mezclas");
    const product=await db().prepare("SELECT p.id,p.code_base_id,p.current_stock,cb.code,cb.name previous_name FROM products p JOIN code_base cb ON cb.id=p.code_base_id WHERE p.id=? AND p.type<>'COMBO'").bind(productId).first<NRow>();if(!product)throw new Error("Producto inexistente");
    if(await db().prepare("SELECT cb.id FROM code_base cb JOIN products p ON p.code_base_id=cb.id WHERE LOWER(cb.name)=LOWER(?) AND p.id<>?").bind(name,productId).first())throw new Error("Ya existe otro producto con ese nombre");if(categoryId&&!await db().prepare("SELECT id FROM categories WHERE id=? AND kind='PRODUCT' AND active=1").bind(categoryId).first())throw new Error("Elegí una categoría de producto activa");
     let estimatedCost=0;if(hasRecipe&&items.length){const placeholders=materialIds.map(()=>"?").join(","),rows=(await db().prepare(`SELECT id,current_cost_cents FROM raw_materials WHERE active=1 AND id IN (${placeholders})`).bind(...materialIds).all()).results as NRow[];if(rows.length!==materialIds.length)throw new Error("Una materia prima de la receta ya no está activa");const costs=new Map(rows.map(row=>[n(row.id),n(row.current_cost_cents)]));estimatedCost+=Math.round(items.reduce((sum,item)=>sum+n(item.quantity)*(costs.get(n(item.materialId))??0),0))}if(hasRecipe&&mixtureItems.length){const placeholders=mixtureIds.map(()=>"?").join(","),rows=(await db().prepare(`SELECT m.id,COALESCE((SELECT ml.unit_cost_cents FROM mixture_lots ml WHERE ml.mixture_id=m.id AND ml.status='ACTIVE' AND ml.available_quantity>0 ORDER BY ml.prepared_at DESC,ml.id DESC LIMIT 1),(SELECT ROUND(SUM(mfi.quantity_per_yield*rm.current_cost_cents)::numeric/NULLIF(MAX(mix_cost.yield_quantity),0)) FROM mixture_formula_items mfi JOIN raw_materials rm ON rm.id=mfi.material_id JOIN mixtures mix_cost ON mix_cost.id=mfi.mixture_id WHERE mfi.mixture_id=m.id)) current_cost_cents FROM mixtures m WHERE m.active=1 AND m.id IN (${placeholders})`).bind(...mixtureIds).all()).results as NRow[];if(rows.length!==mixtureIds.length)throw new Error("Una mezcla de la receta ya no está activa");const costs=new Map(rows.map(row=>[n(row.id),n(row.current_cost_cents)]));estimatedCost+=Math.round(mixtureItems.reduce((sum,item)=>sum+n(item.quantity)*(costs.get(n(item.mixtureId))??0),0))}
    if(pricingMode==="target_margin"&&estimatedCost<=0)throw new Error("Necesitás un costo válido para calcular el precio por margen.");
-    const price=pricingMode==="target_margin"?Math.round(estimatedCost*(1+(targetMargin??0)/100)):Math.round(enteredPrice),margin=estimatedCost>0?Math.round((price-estimatedCost)*1000/estimatedCost)/10:0,q=[db().prepare("UPDATE code_base SET name=?,description=? WHERE id=?").bind(name,privateNotes,product.code_base_id),db().prepare("UPDATE products SET category_id=?,type=?,store_description=?,sale_price_cents=?,minimum_stock=?,estimated_cost_cents=?,profit_percentage=?,pricing_mode=?,target_margin_percentage=? WHERE id=?").bind(categoryId,hasRecipe?"MANUFACTURED":"SIMPLE",description,price,minimum,estimatedCost,margin,pricingMode,targetMargin,productId),db().prepare("INSERT INTO recipes(product_id,yield_quantity,active,updated_at) VALUES(?,1,?,CURRENT_TIMESTAMP) ON CONFLICT(product_id) DO UPDATE SET active=excluded.active,updated_at=CURRENT_TIMESTAMP").bind(productId,hasRecipe?1:0),db().prepare("DELETE FROM recipe_items WHERE recipe_id=(SELECT id FROM recipes WHERE product_id=?)").bind(productId),db().prepare("DELETE FROM recipe_mixture_items WHERE recipe_id=(SELECT id FROM recipes WHERE product_id=?)").bind(productId)];
-    if(hasRecipe){for(const item of items)q.push(db().prepare("INSERT INTO recipe_items(recipe_id,material_id,quantity_per_yield) VALUES((SELECT id FROM recipes WHERE product_id=?),?,?)").bind(productId,n(item.materialId),n(item.quantity)));for(const item of mixtureItems)q.push(db().prepare("INSERT INTO recipe_mixture_items(recipe_id,mixture_id,quantity_per_yield) VALUES((SELECT id FROM recipes WHERE product_id=?),?,?)").bind(productId,n(item.mixtureId),n(item.quantity)))}
-    q.push(db().prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,before_json,after_json) VALUES('UPDATE','PRODUCT',?,?,?,?,?)").bind(productId,actorEmail,`Definición de ${s(product.code)} actualizada`,JSON.stringify({name:s(product.previous_name)}),JSON.stringify({name,price,minimum,hasRecipe,pricingMode,targetMarginPercentage:targetMargin,recipeItems:items.length,recipeMixtureItems:mixtureItems.length,currentStockPreserved:n(product.current_stock)})),...recalcStatements());await db().batch(q);return ok({ok:true,code:s(product.code),currentStock:n(product.current_stock),salePriceCents:price})
+    const price=pricingMode==="target_margin"?Math.round(estimatedCost*(1+(targetMargin??0)/100)):Math.round(enteredPrice),margin=estimatedCost>0?Math.round((price-estimatedCost)*1000/estimatedCost)/10:0;
+    await withKhoraTransaction(async(tx)=>{
+     await validateSensorySelections(sensory,tx);
+     const q:Statement[]=[
+      tx.prepare("UPDATE code_base SET name=?,description=? WHERE id=?").bind(name,privateNotes,product.code_base_id),
+      tx.prepare("UPDATE products SET category_id=?,type=?,store_description=?,sale_price_cents=?,minimum_stock=?,estimated_cost_cents=?,profit_percentage=?,pricing_mode=?,target_margin_percentage=? WHERE id=?").bind(categoryId,hasRecipe?"MANUFACTURED":"SIMPLE",description,price,minimum,estimatedCost,margin,pricingMode,targetMargin,productId),
+      tx.prepare("INSERT INTO recipes(product_id,yield_quantity,active,updated_at) VALUES(?,1,?,CURRENT_TIMESTAMP) ON CONFLICT(product_id) DO UPDATE SET active=excluded.active,updated_at=CURRENT_TIMESTAMP").bind(productId,hasRecipe?1:0),
+      tx.prepare("DELETE FROM recipe_items WHERE recipe_id=(SELECT id FROM recipes WHERE product_id=?)").bind(productId),
+      tx.prepare("DELETE FROM recipe_mixture_items WHERE recipe_id=(SELECT id FROM recipes WHERE product_id=?)").bind(productId),
+     ];
+     if(hasRecipe){
+      for(const item of items)q.push(tx.prepare("INSERT INTO recipe_items(recipe_id,material_id,quantity_per_yield) VALUES((SELECT id FROM recipes WHERE product_id=?),?,?)").bind(productId,n(item.materialId),n(item.quantity)));
+      for(const item of mixtureItems)q.push(tx.prepare("INSERT INTO recipe_mixture_items(recipe_id,mixture_id,quantity_per_yield) VALUES((SELECT id FROM recipes WHERE product_id=?),?,?)").bind(productId,n(item.mixtureId),n(item.quantity)));
+     }
+     if(parsedSensory.provided){
+      q.push(tx.prepare("DELETE FROM product_sensory_options WHERE product_id=?").bind(productId));
+      appendSensoryInserts(tx,q,"?",[productId],sensory);
+     }
+     q.push(
+      tx.prepare("INSERT INTO audit_logs(action,entity_type,entity_id,actor_email,summary,before_json,after_json) VALUES('UPDATE','PRODUCT',?,?,?,?,?)").bind(productId,actorEmail,`Definición de ${s(product.code)} actualizada`,JSON.stringify({name:s(product.previous_name)}),JSON.stringify({name,price,minimum,hasRecipe,pricingMode,targetMarginPercentage:targetMargin,recipeItems:items.length,recipeMixtureItems:mixtureItems.length,currentStockPreserved:n(product.current_stock),sensoryProfileUpdated:parsedSensory.provided,sensorySelections:parsedSensory.provided?sensory.length:undefined})),
+      ...recalcStatements(),
+     );
+     await tx.batch(q);
+    });
+    return ok({ok:true,code:s(product.code),currentStock:n(product.current_stock),salePriceCents:price});
   }
   if(action==="update_combo_definition"){
    const comboId=n(b.comboId),name=required(b.name,"El nombre"),price=Math.round(n(b.salePriceCents)),minimum=Math.max(0,n(b.minimumStock)),description=s(b.description)||null,privateNotes=s(b.privateNotes??b.notes)||null,categoryId=b.categoryId?n(b.categoryId):null,items=(b.items as Array<{productId:number,quantity:number}>)||[],materialItems=(b.materialItems as Array<{materialId:number,quantity:number}>)||[];
