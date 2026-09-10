@@ -110,3 +110,18 @@ test("el flujo de combos no recibe persistencia sensorial", async () => {
   const comboBlock = route.slice(route.indexOf('if(action==="update_combo_definition")'), route.indexOf('if(action==="archive_product_definition"'));
   assert.doesNotMatch(comboBlock, /product_sensory_options|sensoryProfile/);
 });
+test("el editor sensorial ofrece todos los campos, preview y controles accesibles", async () => {
+  const component = await read("app/khora-sensory-profile.tsx");
+  for (const label of [
+    "Perfil sensorial", "Familia olfativa", "Notas aromáticas", "Sensación",
+    "Intensidad", "Ambiente ideal", "Momento recomendado", "Descripción pública",
+    "Vista previa",
+  ]) assert.match(component, new RegExp(label));
+  assert.match(component, /aria-pressed/);
+  assert.match(component, /role="radiogroup"/);
+  assert.match(component, /aria-checked/);
+  assert.match(component, /type="button"/);
+  assert.match(component, /placeholder="Buscar una nota/);
+  assert.match(component, /export function SensoryProfileEditor/);
+  assert.doesNotMatch(component, /fetch\(/);
+});
