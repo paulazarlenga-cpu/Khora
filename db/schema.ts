@@ -12,6 +12,32 @@ export const codeBase = sqliteTable("code_base", { id:id(), code:text("code").no
 export const rawMaterials = sqliteTable("raw_materials", { id:id(), codeBaseId:integer("code_base_id").notNull().references(()=>codeBase.id), categoryId:integer("category_id").references(()=>categories.id), preferredSupplierId:integer("preferred_supplier_id").references(()=>suppliers.id), unit:text("unit").notNull(), currentStock:real("current_stock").notNull().default(0), minimumStock:real("minimum_stock").notNull().default(0), currentCostCents:integer("current_cost_cents").notNull().default(0), notes:text("notes"), active:active() });
 export const rawMaterialPurchases = sqliteTable("raw_material_purchases", { id:id(), operationKey:text("operation_key").notNull().unique(), materialId:integer("material_id").notNull().references(()=>rawMaterials.id), supplierId:integer("supplier_id").references(()=>suppliers.id), quantity:real("quantity").notNull(), inputQuantity:real("input_quantity"), inputUnit:text("input_unit"), baseQuantity:real("base_quantity"), totalCostCents:integer("total_cost_cents").notNull(), unitCostCents:integer("unit_cost_cents").notNull(), paymentStatus:text("payment_status").notNull().default("PAID"), invoiceNumber:text("invoice_number"), purchasedUnit:text("purchased_unit"), status:text("status").notNull().default("CONFIRMED"), cancelledAt:text("cancelled_at"), purchasedAt:created("purchased_at"), notes:text("notes") });
 export const products = sqliteTable("products", { id:id(), codeBaseId:integer("code_base_id").notNull().references(()=>codeBase.id), categoryId:integer("category_id").references(()=>categories.id), type:text("type").notNull(), photoUrl:text("photo_url"), salePriceCents:integer("sale_price_cents").notNull().default(0), estimatedCostCents:integer("estimated_cost_cents").notNull().default(0), lastBatchUnitCostCents:integer("last_batch_unit_cost_cents").notNull().default(0), profitPercentage:real("profit_percentage").notNull().default(30), suggestedPriceCents:integer("suggested_price_cents").notNull().default(0), pricingMode:text("pricing_mode").notNull().default("manual_price"), targetMarginPercentage:real("target_margin_percentage"), currentStock:real("current_stock").notNull().default(0), minimumStock:real("minimum_stock").notNull().default(0), storePublished:integer("store_published", { mode: "boolean" }).notNull().default(true), active:active() });
+export const sensoryOptions = sqliteTable("sensory_options", {
+  id:id(),
+  kind:text("kind").notNull(),
+  slug:text("slug").notNull(),
+  label:text("label").notNull(),
+  sortOrder:integer("sort_order").notNull().default(0),
+  active:active(),
+  createdAt:created(),
+  updatedAt:text("updated_at").notNull().default("CURRENT_TIMESTAMP"),
+}, t=>[
+  uniqueIndex("sensory_options_kind_slug_uq").on(t.kind,t.slug),
+  uniqueIndex("sensory_options_id_kind_uq").on(t.id,t.kind),
+  index("sensory_options_catalog_idx").on(t.kind,t.active,t.sortOrder,t.label),
+]);
+
+export const productSensoryOptions = sqliteTable("product_sensory_options", {
+  productId:integer("product_id").notNull().references(()=>products.id,{onDelete:"cascade"}),
+  optionId:integer("option_id").notNull().references(()=>sensoryOptions.id),
+  kind:text("kind").notNull(),
+  sortOrder:integer("sort_order").notNull().default(0),
+  createdAt:created(),
+}, t=>[
+  uniqueIndex("product_sensory_options_product_option_uq").on(t.productId,t.optionId),
+  index("product_sensory_options_product_idx").on(t.productId,t.kind,t.sortOrder),
+  index("product_sensory_options_option_idx").on(t.optionId,t.productId),
+]);
 export const collections = sqliteTable("collections", { id:id(), name:text("name").notNull(), slug:text("slug").notNull().unique(), description:text("description"), status:text("status").notNull().default("DRAFT"), visibleInStore:integer("visible_in_store", { mode:"boolean" }).notNull().default(true), sortOrder:integer("sort_order").notNull().default(1), createdAt:created(), updatedAt:text("updated_at").notNull().default("CURRENT_TIMESTAMP") }, t=>[uniqueIndex("collections_name_ci_uq").on(t.name),index("collections_store_order_idx").on(t.sortOrder,t.name,t.id)]);
 export const collectionItems = sqliteTable("collection_items", { id:id(), collectionId:integer("collection_id").notNull().references(()=>collections.id,{onDelete:"cascade"}), productId:integer("product_id").notNull().references(()=>products.id,{onDelete:"cascade"}), sortOrder:integer("sort_order").notNull(), createdAt:created() }, t=>[uniqueIndex("collection_items_collection_product_uq").on(t.collectionId,t.productId),index("collection_items_order_idx").on(t.collectionId,t.sortOrder,t.id),index("collection_items_product_idx").on(t.productId,t.collectionId)]);
 export const priceListItems = sqliteTable("price_list_items", { id:id(), priceListId:integer("price_list_id").notNull().references(()=>priceLists.id), productId:integer("product_id").notNull().references(()=>products.id), priceCents:integer("price_cents").notNull(), createdAt:created() }, t=>[uniqueIndex("price_list_items_list_product_uq").on(t.priceListId,t.productId)]);
