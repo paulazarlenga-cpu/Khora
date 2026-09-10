@@ -125,3 +125,16 @@ test("el editor sensorial ofrece todos los campos, preview y controles accesible
   assert.match(component, /export function SensoryProfileEditor/);
   assert.doesNotMatch(component, /fetch\(/);
 });
+test("ProductFormDialog integra el perfil sin modificar ComboFormDialog", async () => {
+  const sections = await read("app/khora-sections.tsx");
+  assert.match(sections, /import \{ SensoryProfileEditor \}/);
+  assert.match(sections, /entity=sensory_options/);
+  assert.match(sections, /sensory_profile/);
+  assert.match(sections, /sensoryProfile,/);
+  assert.match(sections, /<SensoryProfileEditor/);
+  const productBlock = sections.slice(sections.indexOf("function ProductFormDialog"), sections.indexOf("function ComboFormDialog"));
+  const comboBlock = sections.slice(sections.indexOf("function ComboFormDialog"), sections.indexOf("function DefinitionArchiveDialog"));
+  assert.match(productBlock, /Notas privadas/);
+  assert.doesNotMatch(productBlock, /product-content-fields/);
+  assert.doesNotMatch(comboBlock, /SensoryProfileEditor|sensoryProfile/);
+});

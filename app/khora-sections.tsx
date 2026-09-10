@@ -13,6 +13,8 @@ import { KhoraIcon, moduleIcons, type KhoraIconName } from "./khora-icons";
 import { getOrderOperationalState } from "./khora-operations";
 import { Button } from "./khora-button";
 import { CollectionsManager, type CollectionRow } from "./khora-collections";
+import { SensoryProfileEditor } from "./khora-sensory-profile";
+import { emptySensoryProfile, type SensoryOption, type SensoryProfile } from "./khora-sensory";
 import { createClient as createSupabaseClient } from "@/lib/supabase/client";
 
 type DashboardRow = Record<string, unknown>;
@@ -875,6 +877,11 @@ function ProductFormDialog({ product, categories, currentImageUrl, onCancel, onS
   const [minimum, setMinimum] = useState(Number(product?.minimum_stock ?? 0));
   const [description, setDescription] = useState(product?.description ?? "");
   const [privateNotes, setPrivateNotes] = useState(product?.private_notes ?? "");
+  const [sensoryOptions, setSensoryOptions] = useState<SensoryOption[]>([]);
+  const [sensoryProfile, setSensoryProfile] = useState<SensoryProfile>(emptySensoryProfile);
+  const [sensoryLoading, setSensoryLoading] = useState(true);
+  const [sensoryError, setSensoryError] = useState("");
+  const [sensoryRevision, setSensoryRevision] = useState(0);
   const [categoryId, setCategoryId] = useState<number | null>(product?.category_id ? Number(product.category_id) : null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [photoRemoved, setPhotoRemoved] = useState(false);
@@ -905,7 +912,7 @@ function ProductFormDialog({ product, categories, currentImageUrl, onCancel, onS
     let active = true;
     Promise.all([fetch("/api/khora?entity=materials"), fetch("/api/khora?entity=mixtures"), fetch(product ? `/api/khora?entity=product_definition&id=${product.id}` : "/api/khora?entity=next_code&kind=PRODUCT")]).then(async ([materialResponse, mixtureResponse, definitionResponse]) => {
       if (!materialResponse.ok || !mixtureResponse.ok || !definitionResponse.ok) throw new Error();
-      return Promise.all([materialResponse.json() as Promise<{ rows?: Array<Record<string, unknown>> }>, mixtureResponse.json() as Promise<{ rows?: Array<Record<string, unknown>> }>, definitionResponse.json() as Promise<{ code?: string; product?: Record<string, unknown>; items?: Array<Record<string, unknown>>; mixtureItems?: Array<Record<string, unknown>> }>]);
+      return Promise.all([materialResponse.json() as Promise<{ rows?: Array<Record<string, unknown>> }>, mixtureResponse.json() as Promise<{ rows?: Array<Record<string, unknown>> }>, definitionResponse.json() as Promise<{ code?: string; product?: Record<string, unknown>; items?: Array<Record<string, unknown>>; mixtureItems?: Array<Record<string, unknown>>; sensory_profile?: SensoryProfile }>]);
     }).then(([materialData, mixtureData, definitionData]) => {
       if (!active) return;
       const apiMaterials = (materialData.rows ?? []).filter((row) => Boolean(row.active)).map((row) => { const visibleCode = String(row.code), rawName = String(row.material), repeatedPrefix = `${visibleCode} · `; return { id: Number(row.id), code: visibleCode, name: rawName.startsWith(repeatedPrefix) ? rawName.slice(repeatedPrefix.length) : rawName, category: String(row.category ?? "Sin categoría"), categoryId: Number(row.category_id), prefix: String(row.prefix ?? "MAT"), unit: String(row.unit), stock: Number(row.current_stock), minimum: Number(row.minimum_stock), cost: Number(row.current_cost_cents), supplier: String(row.preferred_supplier ?? "Sin proveedor") }; });
@@ -913,9 +920,33 @@ function ProductFormDialog({ product, categories, currentImageUrl, onCancel, onS
       setMixtureCatalog((mixtureData.rows ?? []).filter((row) => Boolean(Number(row.active) || row.active === true)).map((row) => ({ id: Number(row.id), code: String(row.code), name: String(row.name), unit: String(row.unit ?? "ml"), cost: Number(row.estimated_cost_cents ?? 0) })));
       if (definitionData.code) setCode(definitionData.code);
        if (definitionData.product) { const definition = definitionData.product; setCode(String(definition.code)); setName(String(definition.name)); setPriceInput(String(Number(definition.sale_price_cents) / 100)); setPricingMode(definition.pricing_mode === "target_margin" ? "target_margin" : "manual_price"); setMarginInput(String(Number(definition.target_margin_percentage ?? 0))); setMinimum(Number(definition.minimum_stock)); setDescription(String(definition.description ?? "")); setPrivateNotes(String(definition.private_notes ?? "")); setCategoryId(definition.category_id ? Number(definition.category_id) : null); setHasRecipe(Boolean(definition.recipe_active)); setItems((definitionData.items ?? []).map((item) => ({ materialId: Number(item.material_id), quantity: String(item.quantity) }))); setMixtureItems((definitionData.mixtureItems ?? []).map((item) => ({ mixtureId: Number(item.mixture_id), quantity: String(item.quantity) }))); }
+      if (definitionData.sensory_profile) {
+        setSensoryProfile({
+          families: [...definitionData.sensory_profile.families],
+          notes: [...definitionData.sensory_profile.notes],
+          sensations: [...definitionData.sensory_profile.sensations],
+          intensity: definitionData.sensory_profile.intensity,
+          rooms: [...definitionData.sensory_profile.rooms],
+          moment: definitionData.sensory_profile.moment,
+        });
+      }
     }).catch(() => undefined);
     return () => { active = false; };
   }, [product]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/khora?entity=sensory_options")
+      .then(async (response) => {
+        const result = await response.json() as { options?: SensoryOption[]; error?: string };
+        if (!response.ok) throw new Error(result.error ?? "No se pudo cargar el catálogo sensorial.");
+        return result.options ?? [];
+      })
+      .then((options) => { if (active) setSensoryOptions(options); })
+      .catch((cause) => { if (active) setSensoryError(cause instanceof Error ? cause.message : "No se pudo cargar el catálogo sensorial."); })
+      .finally(() => { if (active) setSensoryLoading(false); });
+    return () => { active = false; };
+  }, [sensoryRevision]);
 
   useEffect(() => {
     if (!items.length) return;
@@ -945,8 +976,28 @@ function ProductFormDialog({ product, categories, currentImageUrl, onCancel, onS
     if (hasRecipe && mixtureItems.some((item) => quantityValue(item.quantity) <= 0)) { setError("Todas las cantidades de las mezclas deben ser mayores que cero."); return; }
     setSaving(true); setError(""); setDuplicateWarning("");
     try {
-      const response = await fetch("/api/khora", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: product ? "update_product_definition" : "save_product_with_recipe", id: product?.id, name, salePriceCents, pricingMode, targetMargin: pricingMode === "target_margin" ? parsedMargin : null, minimumStock: minimum, categoryId, description, privateNotes, hasRecipe, items: hasRecipe ? items.map((item) => ({ materialId: item.materialId, quantity: quantityValue(item.quantity) })) : [], mixtureItems: hasRecipe ? mixtureItems.map((item) => ({ mixtureId: item.mixtureId, quantity: quantityValue(item.quantity) })) : [] }) });
-      const result = await response.json() as { error?: string; product?: { id?: number; code?: string; estimated_cost_cents?: number; current_stock?: number } };
+      const sensoryPayload = sensoryLoading || sensoryError ? {} : { sensoryProfile };
+      const payload = {
+        action: product ? "update_product_definition" : "save_product_with_recipe",
+        id: product?.id,
+        name,
+        salePriceCents,
+        pricingMode,
+        targetMargin: pricingMode === "target_margin" ? parsedMargin : null,
+        minimumStock: minimum,
+        categoryId,
+        description,
+        privateNotes,
+        hasRecipe,
+        items: hasRecipe ? items.map((item) => ({ materialId: item.materialId, quantity: quantityValue(item.quantity) })) : [],
+        mixtureItems: hasRecipe ? mixtureItems.map((item) => ({ mixtureId: item.mixtureId, quantity: quantityValue(item.quantity) })) : [],
+        ...sensoryPayload,
+      };
+      const response = await fetch("/api/khora", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });      const result = await response.json() as { error?: string; product?: { id?: number; code?: string; estimated_cost_cents?: number; current_stock?: number } };
       if (!response.ok) throw new Error(result.error ?? "No se pudo crear el producto");
       const savedCode = result.product?.code ?? code;
       const savedProductId = product?.id ?? Number(result.product?.id ?? 0);
@@ -971,7 +1022,27 @@ function ProductFormDialog({ product, categories, currentImageUrl, onCancel, onS
          <div className="form-grid"><section className="product-price-estimator" aria-labelledby="product-price-estimator-title"><header><div><strong id="product-price-estimator-title">Cómo definir el precio</strong><p>Elegí si querés cargar el precio manualmente o definir un margen para calcularlo automáticamente.</p></div></header><div className="product-price-estimator-toggle" role="tablist" aria-label="Modo de definición del precio"><button type="button" className={pricingMode === "manual_price" ? "active" : ""} onClick={() => setPricingMode("manual_price")}>Por precio</button><button type="button" className={pricingMode === "target_margin" ? "active" : ""} onClick={() => setPricingMode("target_margin")}>Por margen</button></div><div className="product-price-estimator-fields"><label><span>{pricingMode === "manual_price" ? "Precio de venta ($)" : "Margen deseado (%)"}</span><div><input type="text" inputMode="decimal" min="0" value={pricingMode === "manual_price" ? priceInput : marginInput} onChange={(event) => (pricingMode === "manual_price" ? setPriceInput(event.target.value.replace(/[^0-9.,]/g, "")) : setMarginInput(event.target.value.replace(/[^0-9.,]/g, "")))} /><b>{pricingMode === "manual_price" ? "$" : "%"}</b></div></label><div className="product-price-estimator-result"><span>{pricingMode === "manual_price" ? "Margen estimado" : "Precio de venta calculado"}</span><strong>{pricingMode === "manual_price" ? marginDisplay : estimatedCost > 0 ? money(salePriceCents / 100) : "—"}</strong><small>{pricingMode === "manual_price" ? "KHORA calcula el margen según el costo actual." : estimatedCost > 0 ? "Se actualiza al cambiar el costo o el margen." : "Necesitás un costo válido para calcular el precio por margen."}</small></div></div></section><label><span>Stock mínimo</span><input type="number" min="0" step="1" value={minimum} onChange={(event) => setMinimum(Math.max(0, Number(event.target.value) || 0))} /></label></div>
         <label><span>Categoría</span><select value={categoryId ?? ""} onChange={(event) => setCategoryId(event.target.value ? Number(event.target.value) : null)}><option value="">Sin categoría</option>{productCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select><small>Organiza el producto en Administración y KHORA Tienda.</small></label>
         <OfficialProductPhotoField kind="producto" currentUrl={currentImageUrl} file={photoFile} removed={photoRemoved} onSelect={(file) => { setPhotoFile(file); setPhotoRemoved(false); setError(""); }} onRemove={() => { setPhotoFile(null); setPhotoRemoved(true); }} onError={setError} />
-        <section className="product-content-fields" aria-label="Contenido del producto"><label><span>Descripción <small>OPCIONAL</small></span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Contá qué hace especial a este producto…" /><small>Visible en KHORA Tienda</small></label><label><span>Notas privadas <small>OPCIONAL</small></span><textarea value={privateNotes} onChange={(event) => setPrivateNotes(event.target.value)} placeholder="Observaciones internas, proveedores o recordatorios…" /><small>Solo visible en Administración</small></label></section>
+        <SensoryProfileEditor
+          options={sensoryOptions}
+          value={sensoryProfile}
+          description={description}
+          loading={sensoryLoading}
+          error={sensoryError}
+          onChange={setSensoryProfile}
+          onDescriptionChange={setDescription}
+          onRetry={() => {
+            setSensoryLoading(true);
+            setSensoryError("");
+            setSensoryRevision((current) => current + 1);
+          }}
+        />
+        <section className="product-private-notes" aria-labelledby="product-private-notes-title">
+          <label>
+            <span id="product-private-notes-title">Notas privadas <small>OPCIONAL</small></span>
+            <textarea value={privateNotes} onChange={(event) => setPrivateNotes(event.target.value)} placeholder="Observaciones internas, proveedores o recordatorios…" />
+            <small>Solo visible en Administración</small>
+          </label>
+        </section>
         <label className="recipe-mode"><input type="checkbox" checked={hasRecipe} onChange={(event) => { setHasRecipe(event.target.checked); setError(""); }} /><span><strong>Producto fabricado</strong><small>Incluye una receta de materias primas. Desmarcá para un producto simple o de reventa.</small></span></label>
         <section className={`recipe-editor recipe-editor-visible ${hasRecipe ? "" : "recipe-editor-disabled"}`} aria-labelledby="recipe-title" data-testid="product-recipe-editor">
           <header><div><strong id="recipe-title">Materias primas y cantidades</strong><p>{hasRecipe ? "Seleccioná los insumos guardados y cuánto necesitás para fabricar UNA unidad." : "La receta está desactivada porque el producto se guardará como simple o de reventa."}</p></div>{hasRecipe && catalog.length > 0 && <button type="button" data-testid="recipe-add-material" onClick={addItem}>+ Agregar materia prima</button>}</header>
