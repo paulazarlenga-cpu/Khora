@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import {
-  SENSORY_KINDS,
   type SensoryKind,
   type SensoryOption,
   type SensoryProfile,
@@ -103,7 +102,9 @@ function AromaNotesSelector({ options, selected, onChange }: {
 type GroupedOptions = Record<SensoryKind, SensoryOption[]>;
 
 function groupOptions(options: SensoryOption[]): GroupedOptions {
-  const grouped = Object.fromEntries(SENSORY_KINDS.map((kind) => [kind, []])) as GroupedOptions;
+  const grouped: GroupedOptions = {
+    FAMILY: [], NOTE: [], SENSATION: [], INTENSITY: [], ROOM: [], MOMENT: [],
+  };
   for (const option of options) grouped[option.kind].push(option);
   return grouped;
 }

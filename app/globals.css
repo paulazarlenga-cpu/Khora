@@ -924,3 +924,50 @@ button:disabled{cursor:not-allowed}
     white-space:normal;
   }
 }
+
+.sensory-profile-editor{display:grid;gap:14px;padding:16px;border:1px solid var(--line);border-radius:11px;background:#fbfcfa;min-width:0}
+.sensory-profile-editor>header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}
+.sensory-profile-editor>header>div{display:grid;gap:4px}
+.sensory-profile-editor>header span,.sensory-profile-preview>header span{font-size:8px;font-weight:750;letter-spacing:1.3px;color:#71837a}
+.sensory-profile-editor>header h3{margin:0;font:22px Georgia,serif;color:var(--forest)}
+.sensory-profile-editor>header p,.sensory-fieldset>p{margin:4px 0 0;color:var(--muted);font-size:10px;line-height:1.5}
+.sensory-profile-layout{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(220px,.75fr);gap:16px;align-items:start;min-width:0}
+.sensory-profile-fields{display:grid;gap:14px;min-width:0}
+.sensory-fieldset{min-width:0;margin:0;padding:0;border:0;display:grid;gap:8px}
+.sensory-fieldset legend{padding:0;font-size:10px;font-weight:750;color:#66766e}
+.sensory-chip-list,.sensory-selected-notes{display:flex;flex-wrap:wrap;gap:7px;min-width:0}
+.sensory-chip,.sensory-selected-notes button,.sensory-note-results button{min-height:32px;border:1px solid #d5dfd8;border-radius:999px;background:#fff;color:var(--forest);padding:6px 11px;font-size:10px;cursor:pointer;transition:background var(--motion-fast) var(--ease-standard),border-color var(--motion-fast) var(--ease-standard),color var(--motion-fast) var(--ease-standard)}
+.sensory-chip:hover,.sensory-selected-notes button:hover,.sensory-note-results button:hover{border-color:#88a396;background:#f3f7f4}
+.sensory-chip:focus-visible,.sensory-selected-notes button:focus-visible,.sensory-note-results button:focus-visible{outline:2px solid var(--focus-border);outline-offset:2px}
+.sensory-chip.selected,.sensory-note-results button[aria-pressed="true"]{background:var(--forest);border-color:var(--forest);color:#fff}
+.sensory-selected-notes button{display:inline-flex;align-items:center;gap:7px;background:#eef4f0}
+.sensory-notes-fieldset input{min-width:0}
+.sensory-note-results{max-height:154px;overflow:auto;display:flex;flex-wrap:wrap;gap:7px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#fff}
+.sensory-note-results>span{color:var(--muted);font-size:10px}
+.sensory-public-description{display:grid;gap:6px;min-width:0;font-size:10px;font-weight:750;color:#66766e}
+.sensory-public-description>span{display:flex;align-items:center;gap:7px}
+.sensory-public-description>span small{font-size:8px;font-weight:650;color:#8b9891}
+.sensory-public-description textarea{min-height:112px;resize:vertical}
+.sensory-public-description>small{font-size:9px;font-weight:500;color:var(--muted)}
+.sensory-profile-preview{position:sticky;top:0;display:grid;gap:10px;min-width:0;padding:14px;border:1px solid #d7e4dc;border-radius:10px;background:#f1f6f2}
+.sensory-profile-preview>header{display:grid;gap:3px}
+.sensory-profile-preview h4{margin:0;font:18px Georgia,serif;color:var(--forest)}
+.sensory-profile-preview dl{margin:0;display:grid;gap:9px}
+.sensory-profile-preview dl>div{display:grid;gap:3px;padding-bottom:8px;border-bottom:1px solid rgba(25,76,60,.1);min-width:0}
+.sensory-profile-preview dl>div:last-child{padding-bottom:0;border-bottom:0}
+.sensory-profile-preview dt{font-size:8px;letter-spacing:1px;text-transform:uppercase;color:#71837a}
+.sensory-profile-preview dd{margin:0;font-size:11px;line-height:1.45;color:var(--ink);overflow-wrap:anywhere}
+.sensory-profile-empty,.sensory-profile-status{margin:0;color:var(--muted);font-size:10px;line-height:1.5}
+.sensory-profile-error{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid #edc6c0;background:#fcf0ee;color:#a54d44;border-radius:8px;padding:10px;font-size:11px}
+.sensory-profile-error button{border:0;background:transparent;color:inherit;text-decoration:underline;cursor:pointer}
+.product-private-notes{padding:14px;border:1px solid var(--line);border-radius:11px;background:#fbfcfa}
+.product-private-notes textarea{min-height:92px}
+
+@media(max-width:620px){
+  .sensory-profile-editor{padding:13px}
+  .sensory-profile-editor>header{display:grid;gap:6px}
+  .sensory-profile-layout{grid-template-columns:1fr}
+  .sensory-profile-preview{position:static}
+  .sensory-chip,.sensory-selected-notes button,.sensory-note-results button{max-width:100%;white-space:normal;text-align:left}
+  .sensory-profile-error{align-items:flex-start;flex-direction:column}
+}

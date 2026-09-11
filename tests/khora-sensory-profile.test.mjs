@@ -138,3 +138,11 @@ test("ProductFormDialog integra el perfil sin modificar ComboFormDialog", async 
   assert.doesNotMatch(productBlock, /product-content-fields/);
   assert.doesNotMatch(comboBlock, /SensoryProfileEditor|sensoryProfile/);
 });
+test("el perfil sensorial reutiliza variables KHORA y se apila en mobile", async () => {
+  const css = await read("app/globals.css");
+  assert.match(css, /\.sensory-profile-editor/);
+  assert.match(css, /\.sensory-chip\.selected/);
+  assert.match(css, /\.sensory-profile-preview/);
+  assert.match(css, /@media\(max-width:620px\)[\s\S]*\.sensory-profile-layout\{grid-template-columns:1fr/);
+  assert.match(css, /overflow-wrap:anywhere/);
+});
