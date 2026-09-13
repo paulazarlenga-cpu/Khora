@@ -1,0 +1,48 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  aromaMatchLabel,
+  calculateAromaMatch,
+  hasPublicSensoryContent,
+  publicSensoryProfileFromRows,
+} from "../app/khora-aroma-match.ts";
+
+test("el buscador suma una coincidencia por cada respuesta elegida", () => {
+  const profile = publicSensoryProfileFromRows([
+    { kind: "SENSATION", slug: "relajante", label: "Relajante", sort_order: 10 },
+    { kind: "ROOM", slug: "dormitorio", label: "Dormitorio", sort_order: 10 },
+    { kind: "FAMILY", slug: "floral", label: "Floral", sort_order: 10 },
+    { kind: "INTENSITY", slug: "media", label: "Media", sort_order: 10 },
+  ]);
+
+  assert.deepEqual(
+    calculateAromaMatch(profile, {
+      sensation: "relajante",
+      room: "dormitorio",
+      family: "floral",
+      intensity: "media",
+    }),
+    { score: 4, label: "Excelente compatibilidad" },
+  );
+});
+
+test("el buscador clasifica resultados parciales sin porcentajes", () => {
+  assert.equal(aromaMatchLabel(3), "Muy buena compatibilidad");
+  assert.equal(aromaMatchLabel(2), "Buena compatibilidad");
+  assert.equal(aromaMatchLabel(1), "Compatibilidad baja");
+  assert.equal(aromaMatchLabel(0), "");
+});
+
+test("el perfil público ordena sus opciones y detecta contenido real", () => {
+  const profile = publicSensoryProfileFromRows([
+    { kind: "NOTE", slug: "vainilla", label: "Vainilla", sort_order: 20 },
+    { kind: "FAMILY", slug: "dulce", label: "Dulce", sort_order: 10 },
+    { kind: "NOTE", slug: "cedro", label: "Cedro", sort_order: 10 },
+    { kind: "UNKNOWN", slug: "ignored", label: "Ignored", sort_order: 0 },
+  ]);
+
+  assert.deepEqual(profile.notes.map((option) => option.slug), ["cedro", "vainilla"]);
+  assert.deepEqual(profile.families.map((option) => option.slug), ["dulce"]);
+  assert.equal(hasPublicSensoryContent(profile), true);
+  assert.equal(hasPublicSensoryContent(publicSensoryProfileFromRows([])), false);
+});
