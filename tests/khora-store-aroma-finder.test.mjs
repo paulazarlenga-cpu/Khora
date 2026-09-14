@@ -67,3 +67,16 @@ test("la fuente de disponibilidad del catálogo se conserva para recomendaciones
   assert.match(route, /khora_available_product_stock\(\?\)/);
   assert.match(route, /p\.active=1 AND p\.store_published=TRUE AND p\.sale_price_cents>0/);
 });
+test("el perfil público presenta grupos editoriales y omite los vacíos", async () => {
+  const component = await read("app/khora-sensory-display.tsx");
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(component, /PERFIL SENSORIAL/);
+  assert.match(component, /Familia aromática/);
+  assert.match(component, /Notas principales/);
+  assert.match(component, /Ideal para/);
+  assert.match(component, /Intensidad/);
+  assert.match(component, /hasPublicSensoryContent/);
+  assert.match(css, /\.sensoryProfile/);
+  assert.match(css, /@media \(max-width: 560px\)/);
+});

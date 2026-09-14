@@ -2174,3 +2174,29 @@
     max-width:36rem;
   }
 }
+
+/* Perfil sensorial público: datos editoriales administrados desde KHORA. */
+.sensoryProfile { max-width:520px; margin-top:42px; padding-top:24px; border-top:1px solid var(--line); }
+.sensoryEyebrow { margin:0 0 10px; color:var(--khora-sand); font-size:9px; letter-spacing:.17em; text-transform:uppercase; }
+.sensoryProfile h2 { margin:0 0 21px; color:var(--khora-green); font:400 29px/1.08 var(--display-font); letter-spacing:-.035em; }
+.sensoryGroups { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 28px; margin:0; }
+.sensoryGroup { min-width:0; }
+.sensoryGroup dt { margin:0 0 8px; color:var(--khora-text-muted); font-size:9px; letter-spacing:.12em; text-transform:uppercase; }
+.sensoryGroup dd { display:flex; flex-wrap:wrap; gap:6px; margin:0; min-width:0; }
+.sensoryChip { max-width:100%; padding:5px 8px; border:1px solid rgba(35,76,60,.16); border-radius:999px; color:var(--khora-green); font-size:10px; line-height:1.25; overflow-wrap:anywhere; }
+.intensityWrap { align-items:center; }
+.intensityDots { display:inline-flex; align-items:center; gap:4px; }
+.intensityDots i { display:block; width:7px; height:7px; border:1px solid var(--khora-green); border-radius:50%; }
+.intensityDots .intensityDotActive { background:var(--khora-green); }
+.intensityLabel { color:var(--khora-green); font-size:11px; }
+.sensoryDescription { margin:24px 0 0; color:var(--khora-text-muted); font:16px/1.65 var(--display-font); overflow-wrap:anywhere; }
+.sensorySummary { margin:9px 0 0; color:var(--khora-text-muted); font-size:10px; letter-spacing:.04em; }
+@media (max-width:560px) {
+  .sensoryProfile { margin-top:32px; padding-top:21px; }
+  .sensoryProfile h2 { font-size:26px; }
+  .sensoryGroups { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .sensoryChip { font-size:9px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .sensoryProfile * { scroll-behavior:auto; }
+}
