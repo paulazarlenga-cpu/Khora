@@ -2252,3 +2252,11 @@
 @media (max-width:850px) { .heroAromaCta { display:flex; width:max-content; margin-top:14px; } }
 @media (max-width:560px) { .heroAromaCta { font-size:9px; } }
 @media (prefers-reduced-motion:reduce) { .heroAromaCta,.heroAromaCta span { transition:none; } }
+.backLink { position:relative; display:inline-flex; align-items:center; gap:7px; transition:color .25s ease; }
+.backLink::after { content:""; position:absolute; right:0; bottom:-6px; left:0; height:1px; background:currentColor; transform:scaleX(0); transform-origin:left; transition:transform .3s cubic-bezier(.2,.65,.25,1); }
+.backLinkArrow { display:inline-block; transition:transform .3s cubic-bezier(.2,.65,.25,1); }
+.backLink:hover,.backLink:focus-visible { color:var(--green); }
+.backLink:hover::after,.backLink:focus-visible::after { transform:scaleX(1); }
+.backLink:hover .backLinkArrow,.backLink:focus-visible .backLinkArrow { transform:translateX(-4px); }
+.backLink:focus-visible { outline:1px solid var(--green); outline-offset:6px; }
+@media (prefers-reduced-motion:reduce) { .backLink,.backLink::after,.backLinkArrow { transition:none; } }

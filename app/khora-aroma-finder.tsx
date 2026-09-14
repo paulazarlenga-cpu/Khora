@@ -81,7 +81,7 @@ export function AromaFinder({ products, options, saving, onOpenProduct, onAddPro
   }
 
   return <main className={styles.aromaPage}>
-    <button className={styles.backLink} type="button" onClick={onBack}>← Volver a la tienda</button>
+    <button className={styles.backLink} type="button" onClick={onBack}><span className={styles.backLinkArrow} aria-hidden="true">←</span><span>Volver a la tienda</span></button>
     <section className={styles.aromaIntro} aria-labelledby="aroma-title">
       <p className={styles.eyebrow}>ENCONTRÁ TU AROMA</p>
       <h1 id="aroma-title">Un aroma para<br /><em>tu momento.</em></h1>

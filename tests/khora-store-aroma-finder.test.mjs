@@ -124,3 +124,15 @@ test("el CTA del buscador se reserva al hero móvil y queda debajo de descubrir 
   assert.match(css, /\.heroAromaCta \{ display:none;/);
   assert.match(css, /@media \(max-width:850px\) \{ \.heroAromaCta \{ display:flex; width:max-content;/);
 });
+
+test("los accesos de regreso comparten una microinteracción accesible", async () => {
+  const page = await read("app/tienda/page.tsx");
+  const finder = await read("app/khora-aroma-finder.tsx");
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(page, /styles\.backLinkArrow/);
+  assert.match(finder, /styles\.backLinkArrow/);
+  assert.match(css, /\.backLinkArrow/);
+  assert.match(css, /\.backLink:hover::after/);
+  assert.match(css, /prefers-reduced-motion:reduce\)[\s\S]*\.backLinkArrow/);
+});
