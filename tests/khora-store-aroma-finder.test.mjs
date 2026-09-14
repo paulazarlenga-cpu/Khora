@@ -180,3 +180,11 @@ test("el hero de aromas centra el bloque editorial sobre la fotografía", async 
   assert.match(heroRule, /justify-content:center/);
   assert.match(heroRule, /text-align:center/);
 });
+test("el hero de aromas usa una fotografía editorial con desvanecido únicamente vertical", async () => {
+  const css = await read("app/tienda/store.module.css");
+  const heroRule = /\.aromaHero\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+  assert.match(heroRule, /url\("\/khora-aroma-hero\.jpg"\)/);
+  assert.match(heroRule, /linear-gradient\(0deg,rgba\(242,237,228,1\) 0%,rgba\(242,237,228,\.76\) 22%,rgba\(242,237,228,0\) 58%\)/);
+  assert.doesNotMatch(heroRule, /linear-gradient\(90deg/);
+});
