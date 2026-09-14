@@ -111,3 +111,10 @@ test("la ficha usa perfil sensorial solo para productos con datos", async () => 
   assert.match(page, /hasPublicSensoryContent/);
   assert.match(page, /Materiales y cuidado/);
 });
+test("la navegación de aroma se repliega antes de quedar sin espacio y no deja variables muertas", async () => {
+  const page = await read("app/tienda/page.tsx");
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(css, /@media \(max-width:1100px\)\{\.header nav\{display:none\}\}/);
+  assert.doesNotMatch(page, /const careCopy\s*=/);
+});
