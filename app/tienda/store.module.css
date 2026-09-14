@@ -2245,3 +2245,8 @@
   .aromaSubmit { width:100%; }.aromaResultsHeading { display:grid; align-items:start; gap:14px; }.aromaResultsHeading h2 { font-size:43px; }.aromaResultGrid { grid-template-columns:minmax(0,1fr); gap:18px; }.aromaProductVisual { aspect-ratio:4/3.4; }.aromaResultBody { padding:17px; }.aromaResultActions .primary { min-height:46px; }
 }
 @media (prefers-reduced-motion:reduce) { .aromaChoices button,.aromaProductVisual img { transition:none; } }
+.heroAromaCta { display:inline-flex; align-items:center; gap:10px; margin:16px 0 0; padding:5px 0; border:0; border-bottom:1px solid rgba(35,76,60,.28); background:transparent; color:var(--khora-green); font-size:10px; letter-spacing:.13em; text-transform:uppercase; cursor:pointer; transition:border-color .2s ease,color .2s ease; }
+.heroAromaCta:hover,.heroAromaCta:focus-visible { border-color:var(--khora-green); color:var(--khora-sand); }
+.heroAromaCta span { font-size:15px; transition:transform .2s ease; }.heroAromaCta:hover span,.heroAromaCta:focus-visible span { transform:translateX(4px); }
+@media (max-width:560px) { .heroAromaCta { font-size:9px; } }
+@media (prefers-reduced-motion:reduce) { .heroAromaCta,.heroAromaCta span { transition:none; } }

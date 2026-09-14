@@ -94,3 +94,20 @@ test("el finder guía cuatro preguntas y reutiliza las acciones de Tienda", asyn
   assert.match(finder, /Cambiar respuestas/);
   assert.doesNotMatch(finder, /fetch\(/);
 });
+test("la tienda ofrece Encontrá tu aroma como vista independiente", async () => {
+  const page = await read("app/tienda/page.tsx");
+
+  assert.match(page, /"aroma"/);
+  assert.match(page, /params\.get\("vista"\) === "aroma"/);
+  assert.match(page, /onAroma/);
+  assert.match(page, /<AromaFinder/);
+  assert.match(page, /ENCONTRÁ TU AROMA/);
+});
+
+test("la ficha usa perfil sensorial solo para productos con datos", async () => {
+  const page = await read("app/tienda/page.tsx");
+
+  assert.match(page, /<SensoryProfileDisplay/);
+  assert.match(page, /hasPublicSensoryContent/);
+  assert.match(page, /Materiales y cuidado/);
+});
