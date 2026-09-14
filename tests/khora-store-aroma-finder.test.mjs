@@ -170,3 +170,13 @@ test("el buscador de aromas presenta un cuestionario editorial amplio sin altera
   assert.match(css, /\.aromaBenefits\{/);
   assert.match(css, /prefers-reduced-motion:reduce\)[\s\S]*\.aromaHero/);
 });
+test("el hero de aromas centra el bloque editorial sobre la fotografía", async () => {
+  const css = await read("app/tienda/store.module.css");
+  const heroRule = /\.aromaHero\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+  assert.match(heroRule, /display:flex/);
+  assert.match(heroRule, /flex-direction:column/);
+  assert.match(heroRule, /align-items:center/);
+  assert.match(heroRule, /justify-content:center/);
+  assert.match(heroRule, /text-align:center/);
+});
