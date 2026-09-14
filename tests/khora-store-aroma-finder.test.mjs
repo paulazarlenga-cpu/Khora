@@ -188,3 +188,8 @@ test("el hero de aromas usa una fotografía editorial con desvanecido únicament
   assert.match(heroRule, /linear-gradient\(0deg,rgba\(242,237,228,1\) 0%,rgba\(242,237,228,\.76\) 22%,rgba\(242,237,228,0\) 58%\)/);
   assert.doesNotMatch(heroRule, /linear-gradient\(90deg/);
 });
+test("el indicador de pasos no dibuja conectores sobre las etiquetas", async () => {
+  const css = await read("app/tienda/store.module.css");
+
+  assert.doesNotMatch(css, /\.aromaProgressStep:not\(:last-child\)::after/);
+});
