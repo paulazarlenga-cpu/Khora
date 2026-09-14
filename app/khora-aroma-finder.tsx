@@ -20,7 +20,6 @@ type AromaFinderProps = {
   saving: boolean;
   onOpenProduct: (id: number) => void;
   onAddProduct: (id: number) => Promise<boolean>;
-  onBack: () => void;
 };
 
 type Question = {
@@ -49,7 +48,7 @@ function FinderProductImage({ product }: { product: AromaFinderProduct }) {
   return <span className={styles.aromaProductPlaceholder} aria-hidden="true">KH</span>;
 }
 
-export function AromaFinder({ products, options, saving, onOpenProduct, onAddProduct, onBack }: AromaFinderProps) {
+export function AromaFinder({ products, options, saving, onOpenProduct, onAddProduct }: AromaFinderProps) {
   const [answers, setAnswers] = useState<AromaAnswers>(emptyAnswers);
   const [step, setStep] = useState(0);
   const [showResults, setShowResults] = useState(false);
@@ -83,9 +82,7 @@ export function AromaFinder({ products, options, saving, onOpenProduct, onAddPro
 
   return (
     <main className={styles.aromaPage}>
-      <button className={styles.backLink} type="button" onClick={onBack}>
-        <span className={styles.backLinkArrow} aria-hidden="true">←</span><span>Volver a la tienda</span>
-      </button>
+
       <section className={`${styles.aromaIntro} ${styles.aromaHero}`} aria-labelledby="aroma-title">
         <p className={styles.eyebrow}>ENCONTRÁ TU AROMA</p>
         <h1 id="aroma-title">Un aroma para<br /><em>tu momento.</em></h1>

@@ -125,13 +125,13 @@ test("el CTA del buscador se reserva al hero móvil y queda debajo de descubrir 
   assert.match(css, /@media \(max-width:850px\) \{ \.heroAromaCta \{ display:flex; width:max-content;/);
 });
 
-test("los accesos de regreso comparten una microinteracción accesible", async () => {
+test("los accesos de regreso restantes conservan una microinteracción accesible", async () => {
   const page = await read("app/tienda/page.tsx");
   const finder = await read("app/khora-aroma-finder.tsx");
   const css = await read("app/tienda/store.module.css");
 
   assert.match(page, /styles\.backLinkArrow/);
-  assert.match(finder, /styles\.backLinkArrow/);
+  assert.doesNotMatch(finder, /styles\.backLinkArrow/);
   assert.match(css, /\.backLinkArrow/);
   assert.match(css, /\.backLink:hover::after/);
   assert.match(css, /prefers-reduced-motion:reduce\)[\s\S]*\.backLinkArrow/);
@@ -192,4 +192,17 @@ test("el indicador de pasos no dibuja conectores sobre las etiquetas", async () 
   const css = await read("app/tienda/store.module.css");
 
   assert.doesNotMatch(css, /\.aromaProgressStep:not\(:last-child\)::after/);
+});
+test("el hero de aromas aprovecha el espacio superior y conserva contraste sobre la foto", async () => {
+  const finder = await read("app/khora-aroma-finder.tsx");
+  const css = await read("app/tienda/store.module.css");
+  const pageRule = /\.aromaPage\{([^}]*)\}/.exec(css)?.[1] ?? "";
+  const heroRule = /\.aromaHero\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+  assert.doesNotMatch(finder, /Volver a la tienda/);
+  assert.doesNotMatch(css, /\.aromaPage>\.backLink/);
+  assert.match(pageRule, /padding:0 0 110px/);
+  assert.match(heroRule, /margin:0 calc\(50% - 50vw\) 0/);
+  assert.match(css, /\.aromaHero h1 em\{color:#795333/);
+  assert.match(css, /\.aromaHero>p:last-child\{[^}]*color:#274a3c/);
 });
