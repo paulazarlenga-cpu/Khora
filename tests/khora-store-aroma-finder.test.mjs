@@ -136,3 +136,22 @@ test("los accesos de regreso comparten una microinteracción accesible", async (
   assert.match(css, /\.backLink:hover::after/);
   assert.match(css, /prefers-reduced-motion:reduce\)[\s\S]*\.backLinkArrow/);
 });
+test("el hero integra la foto como una portada editorial continua", async () => {
+  const page = await read("app/tienda/page.tsx");
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(page, /className=\{styles\.hero\}/);
+  assert.match(page, /src="\/khora-store-hero\.png"/);
+  const heroRules = [...css.matchAll(/\.hero\{([^}]*)\}/g)].map((match) => match[1]);
+  const editorialHeroRule = heroRules.find((rule) => rule.includes("grid-template-columns:48fr 52fr")) ?? "";
+  assert.match(editorialHeroRule, /max-width:none/);
+  assert.match(editorialHeroRule, /margin:0/);
+  assert.match(editorialHeroRule, /padding:0/);
+  assert.match(editorialHeroRule, /background:#1f3d33/);
+  assert.match(editorialHeroRule, /grid-template-columns:48fr 52fr/);
+  assert.match(editorialHeroRule, /gap:0/);
+  assert.match(css, /\.heroImage\{[^}]*width:100%[^}]*max-width:none[^}]*height:100%/);
+  assert.match(css, /\.heroImage img\{[^}]*mask-image:linear-gradient/);
+  assert.match(css, /\.hero \.discoverButton\{[^}]*background:#f2ede4[^}]*color:#1f3d33/);
+  assert.match(css, /@media \(max-width:850px\)\{[^}]*\.hero\{[^}]*background:#1f3d33/);
+});
