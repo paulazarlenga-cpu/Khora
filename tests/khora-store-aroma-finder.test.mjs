@@ -155,3 +155,18 @@ test("el hero integra la foto como una portada editorial continua", async () => 
   assert.match(css, /\.hero \.discoverButton\{[^}]*background:#f2ede4[^}]*color:#1f3d33/);
   assert.match(css, /@media \(max-width:850px\)\{[^}]*\.hero\{[^}]*background:#1f3d33/);
 });
+test("el buscador de aromas presenta un cuestionario editorial amplio sin alterar sus cuatro decisiones", async () => {
+  const finder = await read("app/khora-aroma-finder.tsx");
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(finder, /aromaHero/);
+  assert.match(finder, /Sensación/);
+  assert.match(finder, /Familia aromática/);
+  assert.match(finder, /Aromas que transforman tu bienestar/);
+  assert.match(finder, /Inspirados en la naturaleza/);
+  assert.match(finder, /Hogares más conscientes/);
+  assert.match(css, /\.aromaHero\{/);
+  assert.match(css, /\.aromaQuestionsGrid\{[^}]*grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(css, /\.aromaBenefits\{/);
+  assert.match(css, /prefers-reduced-motion:reduce\)[\s\S]*\.aromaHero/);
+});
