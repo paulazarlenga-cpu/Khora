@@ -118,3 +118,9 @@ test("la navegación de aroma se repliega antes de quedar sin espacio y no deja 
   assert.match(css, /@media \(max-width:1100px\)\{\.header nav\{display:none\}\}/);
   assert.doesNotMatch(page, /const careCopy\s*=/);
 });
+test("el CTA del buscador se reserva al hero móvil y queda debajo de descubrir KHORA", async () => {
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(css, /\.heroAromaCta \{ display:none;/);
+  assert.match(css, /@media \(max-width:850px\) \{ \.heroAromaCta \{ display:flex; width:max-content;/);
+});
