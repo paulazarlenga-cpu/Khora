@@ -2200,3 +2200,48 @@
 @media (prefers-reduced-motion:reduce) {
   .sensoryProfile * { scroll-behavior:auto; }
 }
+/* Encontrá tu aroma: recorrido independiente, sin alterar catálogo o reservas. */
+.aromaPage { max-width:1180px; margin:0 auto; padding:44px clamp(24px,6vw,96px) 110px; }
+.aromaIntro { max-width:620px; margin:54px 0 42px; }
+.aromaIntro h1 { margin:0; color:var(--khora-green); font:400 clamp(48px,6vw,76px)/.94 var(--display-font); letter-spacing:-.055em; }
+.aromaIntro h1 em { color:var(--khora-sand); }
+.aromaIntro > p:last-child { max-width:470px; margin:24px 0 0; color:var(--khora-text-muted); font:17px/1.65 var(--display-font); }
+.aromaQuestionnaire { max-width:920px; padding:34px; border:1px solid rgba(35,76,60,.15); background:rgba(255,255,255,.27); }
+.aromaProgress { display:flex; gap:8px; margin-bottom:31px; }
+.aromaProgress span { display:block; width:44px; height:1px; background:var(--line); }
+.aromaProgress .aromaProgressActive { background:var(--khora-green); }
+.aromaQuestion { min-width:0; margin:0 0 31px; padding:0; border:0; }
+.aromaQuestion legend { max-width:100%; color:var(--khora-green); font:400 31px/1.1 var(--display-font); letter-spacing:-.035em; }
+.aromaQuestion > p { max-width:430px; margin:10px 0 19px; color:var(--khora-text-muted); font-size:13px; line-height:1.6; }
+.aromaChoices { display:flex; flex-wrap:wrap; gap:9px; }
+.aromaChoices button { max-width:100%; border:1px solid rgba(35,76,60,.22); border-radius:999px; background:transparent; color:var(--khora-green); padding:10px 14px; font-size:11px; line-height:1.3; cursor:pointer; transition:background .2s ease,color .2s ease,border-color .2s ease; overflow-wrap:anywhere; }
+.aromaChoices button:hover,.aromaChoices button:focus-visible,.aromaChoiceSelected { border-color:var(--khora-green)!important; background:var(--khora-green)!important; color:var(--khora-ivory)!important; }
+.aromaQuestionEmpty { color:var(--khora-text-muted); }
+.aromaMobileControls { display:none; }
+.aromaSubmit { margin-top:4px; }
+.aromaResults { max-width:1050px; }
+.aromaResultsHeading { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:31px; }
+.aromaResultsHeading h2 { margin:0; color:var(--khora-green); font:400 clamp(37px,5vw,57px)/.98 var(--display-font); letter-spacing:-.05em; }
+.aromaResultGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px; }
+.aromaResultCard { min-width:0; border:1px solid rgba(35,76,60,.14); background:rgba(255,255,255,.3); }
+.aromaProductVisual { display:block; width:100%; aspect-ratio:4/4.2; overflow:hidden; border:0; background:var(--khora-beige); cursor:pointer; }
+.aromaProductVisual img { display:block; width:100%; height:100%; object-fit:cover; transition:transform .45s ease; }
+.aromaProductVisual:hover img { transform:scale(1.025); }
+.aromaProductPlaceholder { display:grid; width:100%; height:100%; place-items:center; color:var(--khora-green); font:400 46px var(--display-font); }
+.aromaResultBody { min-width:0; padding:18px; }
+.aromaMatchLabel { margin:0 0 8px; color:var(--khora-sand); font-size:9px; letter-spacing:.13em; text-transform:uppercase; }
+.aromaResultBody h3 { margin:0; color:var(--khora-green); font:400 26px/1.1 var(--display-font); overflow-wrap:anywhere; }
+.aromaResultMeta { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:17px; color:var(--khora-green); }
+.aromaResultMeta strong { font-size:15px; font-weight:500; }.aromaResultMeta span { font-size:10px; }
+.aromaResultActions { display:grid; grid-template-columns:1fr; gap:13px; margin-top:18px; }.aromaResultActions .linkButton { justify-self:start; }.aromaResultActions .primary { width:100%; padding-inline:12px; font-size:9px; }
+.aromaNoMatch { max-width:520px; padding:38px 0; }.aromaNoMatch h3 { margin:0; color:var(--khora-green); font:400 32px var(--display-font); }.aromaNoMatch p { color:var(--khora-text-muted); line-height:1.65; }
+@media (max-width:850px) { .aromaResultGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }.aromaPage { max-width:100%; } }
+@media (max-width:560px) {
+  .aromaPage { padding:34px 18px 70px; overflow-x:clip; }
+  .aromaIntro { margin:39px 0 31px; }.aromaIntro h1 { font-size:47px; }.aromaIntro > p:last-child { font-size:15px; }
+  .aromaQuestionnaire { padding:24px 18px; }.aromaProgress { margin-bottom:26px; }.aromaProgress span { flex:1; width:auto; }
+  .aromaQuestion { display:none; margin-bottom:0; }.aromaQuestionActive { display:grid; }.aromaQuestion legend { font-size:29px; }.aromaChoices { gap:8px; }.aromaChoices button { padding:10px 12px; font-size:10px; }
+  .aromaMobileControls { display:flex; justify-content:space-between; gap:14px; margin:27px 0 20px; }.aromaMobileControls .linkButton:disabled { opacity:.35; cursor:not-allowed; }
+  .aromaSubmit { width:100%; }.aromaResultsHeading { display:grid; align-items:start; gap:14px; }.aromaResultsHeading h2 { font-size:43px; }.aromaResultGrid { grid-template-columns:minmax(0,1fr); gap:18px; }.aromaProductVisual { aspect-ratio:4/3.4; }.aromaResultBody { padding:17px; }.aromaResultActions .primary { min-height:46px; }
+}
+@media (prefers-reduced-motion:reduce) { .aromaChoices button,.aromaProductVisual img { transition:none; } }

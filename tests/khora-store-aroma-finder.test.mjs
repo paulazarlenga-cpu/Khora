@@ -80,3 +80,17 @@ test("el perfil público presenta grupos editoriales y omite los vacíos", async
   assert.match(css, /\.sensoryProfile/);
   assert.match(css, /@media \(max-width: 560px\)/);
 });
+test("el finder guía cuatro preguntas y reutiliza las acciones de Tienda", async () => {
+  const finder = await read("app/khora-aroma-finder.tsx");
+
+  assert.match(finder, /ENCONTRÁ TU AROMA/);
+  assert.match(finder, /¿Qué sensación buscás\?/);
+  assert.match(finder, /¿Dónde lo vas a usar\?/);
+  assert.match(finder, /¿Qué familia aromática preferís\?/);
+  assert.match(finder, /¿Qué intensidad te gusta\?/);
+  assert.match(finder, /VER RECOMENDACIONES/);
+  assert.match(finder, /calculateAromaMatch/);
+  assert.match(finder, /availableStock > 0/);
+  assert.match(finder, /Cambiar respuestas/);
+  assert.doesNotMatch(finder, /fetch\(/);
+});
