@@ -60,6 +60,7 @@
 .logo{width:auto;min-width:150px}.wordmark,.footerWordmark{display:block;color:var(--khora-green);font:400 29px/1 var(--display-font);letter-spacing:.2em}.header nav{gap:34px}.navItem{position:relative;color:var(--khora-text)!important;font-size:10px!important;letter-spacing:.14em!important}.navItem:after{content:"";position:absolute;left:0;right:0;bottom:1px;height:1px;background:var(--khora-green);transform:scaleX(0);transform-origin:left;transition:transform .25s ease}.navItem:hover:after,.navActive:after{transform:scaleX(1)}
 .collectionMenu{position:relative}.collectionMenu summary{list-style:none;cursor:pointer}.collectionMenu summary::-webkit-details-marker{display:none}.collectionMenu summary span{font-size:12px;margin-left:4px}.collectionMenu[open] summary:after{transform:scaleX(1)}.collectionMenuPanel{position:absolute;left:-18px;top:32px;z-index:20;min-width:190px;display:grid;gap:3px;padding:16px;background:var(--khora-ivory);border:1px solid var(--line);box-shadow:0 18px 40px rgba(32,55,43,.1)}.collectionMenuPanel button{display:flex;justify-content:space-between;border:0;background:none;padding:8px 3px;color:var(--khora-text);font-size:10px;text-align:left;text-transform:uppercase;letter-spacing:.1em;cursor:pointer}.collectionMenuPanel button:hover{color:var(--khora-green)}
 .headerActions{gap:23px}.favoriteAction{border:0;background:none;color:var(--khora-green);font-size:24px;line-height:1;cursor:pointer;padding:5px}.favoriteAction:hover{transform:scale(1.08)}
+@media (max-width:1100px){.header nav{display:none}}
 .hero{max-width:1440px;min-height:calc(100svh - 84px);padding:56px clamp(28px,7vw,112px) 46px;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:clamp(32px,6vw,96px);position:relative;overflow:hidden}.heroCopy{position:relative;z-index:1;align-self:center;padding-bottom:52px}.eyebrowRow{display:flex;align-items:center;gap:18px}.eyebrowRow>span{width:58px;height:1px;background:var(--khora-sand)}.hero .eyebrow{margin-bottom:0}.hero h1{font-size:clamp(58px,7vw,104px);line-height:.92;letter-spacing:-.06em}.hero h1 em{color:var(--khora-sand)}.hero>div:first-child>p:not(.eyebrow){max-width:390px;font-size:16px;line-height:1.65;margin:30px 0 34px}.heroMeta{display:flex;align-items:center;gap:28px;margin-top:64px;color:var(--khora-text-muted);font-size:9px;letter-spacing:.16em}.heroMeta i{display:inline-block;width:44px;height:1px;background:var(--khora-sand);margin:0 7px 3px}.heroMeta b{font-size:14px;margin-left:5px;font-weight:400}.heroImage{min-height:0;height:min(70vh,650px);align-self:center;background:var(--khora-sage);box-shadow:none;isolation:isolate;animation:heroImageIn .8s .22s both ease-out}.heroImage:after{display:none}.heroImage:before{content:"";position:absolute;inset:0;background:linear-gradient(90deg,var(--khora-ivory) 0%,rgba(245,241,233,.2) 16%,transparent 40%),linear-gradient(0deg,rgba(23,58,45,.12),transparent 35%);z-index:1;pointer-events:none}.heroImage img{width:100%;height:100%;object-fit:cover;display:block;transform:scale(1.015)}.heroImageNote{position:absolute;z-index:2;right:28px;bottom:22px;color:rgba(245,241,233,.82);font-size:9px;letter-spacing:.2em}.heroCopy>*{animation:heroCopyIn .55s both ease-out}.heroCopy .eyebrowRow{animation-delay:.08s}.heroCopy h1{animation-delay:.16s}.heroCopy>p{animation-delay:.24s}.heroCopy>.primary{animation-delay:.32s}.heroCopy .heroMeta{animation-delay:.4s}@keyframes heroCopyIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}@keyframes heroImageIn{from{opacity:0;transform:translateX(18px) scale(1.015)}to{opacity:1;transform:none}}
 .catalog{max-width:1440px;padding:118px clamp(28px,7vw,112px) 130px}.sectionHeading{margin-bottom:48px}.sectionHeading h2,.story h2{font-family:var(--display-font);font-weight:400}.sectionHeading>p{font-size:14px}.filters{padding:16px 0;margin-bottom:46px}.categoryList{gap:27px}.categoryList button{font-size:10px;letter-spacing:.1em;text-transform:uppercase}.grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:52px 25px}.card{background:transparent}.cardVisual{aspect-ratio:4/5;background:var(--khora-beige)}.cardVisual img{transition:transform .55s cubic-bezier(.2,.65,.25,1)}.cardVisual:hover img{transform:scale(1.025)}.cardReveal{position:absolute;left:50%;bottom:18px;transform:translate(-50%,8px);opacity:0;white-space:nowrap;padding:10px 13px;background:var(--khora-ivory);color:var(--khora-green);font-size:9px;letter-spacing:.13em;text-transform:uppercase;transition:opacity .25s ease,transform .25s ease}.cardVisual:hover .cardReveal,.cardVisual:focus-visible .cardReveal{opacity:1;transform:translate(-50%,0)}.cardBody{padding:18px 0 0}.cardCategory{font-size:9px;letter-spacing:.16em}.card h3{font-size:25px}.cardMeta strong{font-size:14px}.cardLink{transition:color .2s ease,border-color .2s ease}.cardLink:hover{color:var(--khora-sand);border-color:var(--khora-sand)}
 .story{max-width:1440px;padding:108px clamp(28px,7vw,112px) 130px;grid-template-columns:minmax(220px,.8fr) minmax(280px,1fr) auto;gap:clamp(32px,7vw,120px)}.story>p{font-size:19px;line-height:1.75}.story h2{font-size:clamp(36px,4vw,56px)}
@@ -2174,3 +2175,79 @@
     max-width:36rem;
   }
 }
+
+/* Perfil sensorial público: datos editoriales administrados desde KHORA. */
+.sensoryProfile { max-width:520px; margin-top:42px; padding-top:24px; border-top:1px solid var(--line); }
+.sensoryEyebrow { margin:0 0 10px; color:var(--khora-sand); font-size:9px; letter-spacing:.17em; text-transform:uppercase; }
+.sensoryProfile h2 { margin:0 0 21px; color:var(--khora-green); font:400 29px/1.08 var(--display-font); letter-spacing:-.035em; }
+.sensoryGroups { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 28px; margin:0; }
+.sensoryGroup { min-width:0; }
+.sensoryGroup dt { margin:0 0 8px; color:var(--khora-text-muted); font-size:9px; letter-spacing:.12em; text-transform:uppercase; }
+.sensoryGroup dd { display:flex; flex-wrap:wrap; gap:6px; margin:0; min-width:0; }
+.sensoryChip { max-width:100%; padding:5px 8px; border:1px solid rgba(35,76,60,.16); border-radius:999px; color:var(--khora-green); font-size:10px; line-height:1.25; overflow-wrap:anywhere; }
+.intensityWrap { align-items:center; }
+.intensityDots { display:inline-flex; align-items:center; gap:4px; }
+.intensityDots i { display:block; width:7px; height:7px; border:1px solid var(--khora-green); border-radius:50%; }
+.intensityDots .intensityDotActive { background:var(--khora-green); }
+.intensityLabel { color:var(--khora-green); font-size:11px; }
+.sensoryDescription { margin:24px 0 0; color:var(--khora-text-muted); font:16px/1.65 var(--display-font); overflow-wrap:anywhere; }
+.sensorySummary { margin:9px 0 0; color:var(--khora-text-muted); font-size:10px; letter-spacing:.04em; }
+@media (max-width:560px) {
+  .sensoryProfile { margin-top:32px; padding-top:21px; }
+  .sensoryProfile h2 { font-size:26px; }
+  .sensoryGroups { grid-template-columns:minmax(0,1fr); gap:16px; }
+  .sensoryChip { font-size:9px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .sensoryProfile * { scroll-behavior:auto; }
+}
+/* Encontrá tu aroma: recorrido independiente, sin alterar catálogo o reservas. */
+.aromaPage { max-width:1180px; margin:0 auto; padding:44px clamp(24px,6vw,96px) 110px; }
+.aromaIntro { max-width:620px; margin:54px 0 42px; }
+.aromaIntro h1 { margin:0; color:var(--khora-green); font:400 clamp(48px,6vw,76px)/.94 var(--display-font); letter-spacing:-.055em; }
+.aromaIntro h1 em { color:var(--khora-sand); }
+.aromaIntro > p:last-child { max-width:470px; margin:24px 0 0; color:var(--khora-text-muted); font:17px/1.65 var(--display-font); }
+.aromaQuestionnaire { max-width:920px; padding:34px; border:1px solid rgba(35,76,60,.15); background:rgba(255,255,255,.27); }
+.aromaProgress { display:flex; gap:8px; margin-bottom:31px; }
+.aromaProgress span { display:block; width:44px; height:1px; background:var(--line); }
+.aromaProgress .aromaProgressActive { background:var(--khora-green); }
+.aromaQuestion { min-width:0; margin:0 0 31px; padding:0; border:0; }
+.aromaQuestion legend { max-width:100%; color:var(--khora-green); font:400 31px/1.1 var(--display-font); letter-spacing:-.035em; }
+.aromaQuestion > p { max-width:430px; margin:10px 0 19px; color:var(--khora-text-muted); font-size:13px; line-height:1.6; }
+.aromaChoices { display:flex; flex-wrap:wrap; gap:9px; }
+.aromaChoices button { max-width:100%; border:1px solid rgba(35,76,60,.22); border-radius:999px; background:transparent; color:var(--khora-green); padding:10px 14px; font-size:11px; line-height:1.3; cursor:pointer; transition:background .2s ease,color .2s ease,border-color .2s ease; overflow-wrap:anywhere; }
+.aromaChoices button:hover,.aromaChoices button:focus-visible,.aromaChoiceSelected { border-color:var(--khora-green)!important; background:var(--khora-green)!important; color:var(--khora-ivory)!important; }
+.aromaQuestionEmpty { color:var(--khora-text-muted); }
+.aromaMobileControls { display:none; }
+.aromaSubmit { margin-top:4px; }
+.aromaResults { max-width:1050px; }
+.aromaResultsHeading { display:flex; align-items:end; justify-content:space-between; gap:24px; margin-bottom:31px; }
+.aromaResultsHeading h2 { margin:0; color:var(--khora-green); font:400 clamp(37px,5vw,57px)/.98 var(--display-font); letter-spacing:-.05em; }
+.aromaResultGrid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:22px; }
+.aromaResultCard { min-width:0; border:1px solid rgba(35,76,60,.14); background:rgba(255,255,255,.3); }
+.aromaProductVisual { display:block; width:100%; aspect-ratio:4/4.2; overflow:hidden; border:0; background:var(--khora-beige); cursor:pointer; }
+.aromaProductVisual img { display:block; width:100%; height:100%; object-fit:cover; transition:transform .45s ease; }
+.aromaProductVisual:hover img { transform:scale(1.025); }
+.aromaProductPlaceholder { display:grid; width:100%; height:100%; place-items:center; color:var(--khora-green); font:400 46px var(--display-font); }
+.aromaResultBody { min-width:0; padding:18px; }
+.aromaMatchLabel { margin:0 0 8px; color:var(--khora-sand); font-size:9px; letter-spacing:.13em; text-transform:uppercase; }
+.aromaResultBody h3 { margin:0; color:var(--khora-green); font:400 26px/1.1 var(--display-font); overflow-wrap:anywhere; }
+.aromaResultMeta { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:17px; color:var(--khora-green); }
+.aromaResultMeta strong { font-size:15px; font-weight:500; }.aromaResultMeta span { font-size:10px; }
+.aromaResultActions { display:grid; grid-template-columns:1fr; gap:13px; margin-top:18px; }.aromaResultActions .linkButton { justify-self:start; }.aromaResultActions .primary { width:100%; padding-inline:12px; font-size:9px; }
+.aromaNoMatch { max-width:520px; padding:38px 0; }.aromaNoMatch h3 { margin:0; color:var(--khora-green); font:400 32px var(--display-font); }.aromaNoMatch p { color:var(--khora-text-muted); line-height:1.65; }
+@media (max-width:850px) { .aromaResultGrid { grid-template-columns:repeat(2,minmax(0,1fr)); }.aromaPage { max-width:100%; } }
+@media (max-width:560px) {
+  .aromaPage { padding:34px 18px 70px; overflow-x:clip; }
+  .aromaIntro { margin:39px 0 31px; }.aromaIntro h1 { font-size:47px; }.aromaIntro > p:last-child { font-size:15px; }
+  .aromaQuestionnaire { padding:24px 18px; }.aromaProgress { margin-bottom:26px; }.aromaProgress span { flex:1; width:auto; }
+  .aromaQuestion { display:none; margin-bottom:0; }.aromaQuestionActive { display:grid; }.aromaQuestion legend { font-size:29px; }.aromaChoices { gap:8px; }.aromaChoices button { padding:10px 12px; font-size:10px; }
+  .aromaMobileControls { display:flex; justify-content:space-between; gap:14px; margin:27px 0 20px; }.aromaMobileControls .linkButton:disabled { opacity:.35; cursor:not-allowed; }
+  .aromaSubmit { width:100%; }.aromaResultsHeading { display:grid; align-items:start; gap:14px; }.aromaResultsHeading h2 { font-size:43px; }.aromaResultGrid { grid-template-columns:minmax(0,1fr); gap:18px; }.aromaProductVisual { aspect-ratio:4/3.4; }.aromaResultBody { padding:17px; }.aromaResultActions .primary { min-height:46px; }
+}
+@media (prefers-reduced-motion:reduce) { .aromaChoices button,.aromaProductVisual img { transition:none; } }
+.heroAromaCta { display:inline-flex; align-items:center; gap:10px; margin:16px 0 0; padding:5px 0; border:0; border-bottom:1px solid rgba(35,76,60,.28); background:transparent; color:var(--khora-green); font-size:10px; letter-spacing:.13em; text-transform:uppercase; cursor:pointer; transition:border-color .2s ease,color .2s ease; }
+.heroAromaCta:hover,.heroAromaCta:focus-visible { border-color:var(--khora-green); color:var(--khora-sand); }
+.heroAromaCta span { font-size:15px; transition:transform .2s ease; }.heroAromaCta:hover span,.heroAromaCta:focus-visible span { transform:translateX(4px); }
+@media (max-width:560px) { .heroAromaCta { font-size:9px; } }
+@media (prefers-reduced-motion:reduce) { .heroAromaCta,.heroAromaCta span { transition:none; } }
