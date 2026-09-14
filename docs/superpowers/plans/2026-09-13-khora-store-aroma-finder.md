@@ -433,4 +433,3 @@ No crear commit si no hizo falta una corrección.
 - Spec coverage: Tasks 1–2 cubren datos, privacidad, opciones activas, stock y scoring; Tasks 3–5 cubren ficha, ruta, header/hero, cuestionario, resultados y acciones existentes; Task 6 cubre tests y visuales.
 - Placeholder scan: no hay decisiones de diseño sin resolver ni trabajo diferido.
 - Type consistency: PublicSensoryProfile y AromaAnswers nacen en Task 1 y Tasks 2–5 consumen esos mismos contratos.
-
