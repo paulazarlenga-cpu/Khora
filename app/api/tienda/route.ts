@@ -1,6 +1,7 @@
 import { khoraDb, withKhoraTransaction, type KhoraTransaction } from "@/db/postgres";
 import { isValidClientPhone, normalizeClientEmail, normalizeClientPhone } from "../../khora-client";
 import { normalizeWhatsAppNumber } from "../../khora-whatsapp";
+import { publicSensoryProfileFromRows, type PublicSensoryOption, type PublicSensoryProfile } from "../../khora-aroma-match";
 
 type Row = Record<string, unknown>;
 type CartItemInput = { productId: number; quantity: number };
@@ -21,6 +22,7 @@ type StoreProduct = {
   published: boolean;
   unitsSold: number;
   collectionMemberships: StoreCollectionMembership[];
+  sensoryProfile: PublicSensoryProfile;
 };
 
 const db = () => khoraDb;
@@ -160,10 +162,63 @@ async function listStoreProducts(token = ""): Promise<StoreProduct[]> {
     LEFT JOIN khora_available_product_stock(?) stock ON stock.product_id=p.id
     WHERE p.active=1 AND p.store_published=TRUE AND p.sale_price_cents>0 ORDER BY cb.name`).bind(token || null).all<Row>();
   return result.results.map((row) => ({
-    id: asNumber(row.id), code: asString(row.code), name: asString(row.name), description: asString(row.description), category: asString(row.category) || (asString(row.type)==="COMBO"?"Combo":"Producto"), type: asString(row.type), priceCents: asNumber(row.sale_price_cents), stock: asNumber(row.current_stock), availableStock: asNumber(row.available_stock), imagePath: parseImagePath(row.image_path), published: Boolean(row.store_published), unitsSold: asNumber(row.units_sold), collectionMemberships: parseCollectionMemberships(row.collection_memberships),
+    id: asNumber(row.id), code: asString(row.code), name: asString(row.name), description: asString(row.description), category: asString(row.category) || (asString(row.type)==="COMBO"?"Combo":"Producto"), type: asString(row.type), priceCents: asNumber(row.sale_price_cents), stock: asNumber(row.current_stock), availableStock: asNumber(row.available_stock), imagePath: parseImagePath(row.image_path), published: Boolean(row.store_published), unitsSold: asNumber(row.units_sold), collectionMemberships: parseCollectionMemberships(row.collection_memberships), sensoryProfile: publicSensoryProfileFromRows([]),
   }));
 }
 
+type StoreSensoryRow = {
+  product_id: number;
+  kind: string;
+  slug: string;
+  label: string;
+  sort_order: number;
+};
+
+const publicSensoryKinds = new Set<PublicSensoryOption["kind"]>([
+  "FAMILY", "NOTE", "SENSATION", "INTENSITY", "ROOM", "MOMENT",
+]);
+
+function publicSensoryOptionFromRow(row: Row): PublicSensoryOption | null {
+  const kind = asString(row.kind) as PublicSensoryOption["kind"];
+  const slug = asString(row.slug);
+  const label = asString(row.label);
+  if (!publicSensoryKinds.has(kind) || !slug || !label) return null;
+  return { kind, slug, label };
+}
+
+async function listStoreProductsWithSensory(token = "") {
+  const products = await listStoreProducts(token);
+  const productIds = products.map((product) => product.id);
+  const productRowsPromise = productIds.length
+    ? db().prepare(`SELECT pso.product_id,so.kind,so.slug,so.label,pso.sort_order
+        FROM product_sensory_options pso
+        JOIN sensory_options so ON so.id=pso.option_id AND so.kind=pso.kind
+        WHERE so.active=TRUE AND pso.product_id IN (${productIds.map(() => "?").join(",")})
+        ORDER BY pso.product_id,so.kind,pso.sort_order,so.id`).bind(...productIds).all<StoreSensoryRow>()
+    : Promise.resolve({ results: [] as StoreSensoryRow[] });
+  const optionsPromise = db().prepare(`SELECT kind,slug,label
+      FROM sensory_options
+      WHERE active=TRUE
+      ORDER BY kind,sort_order,label,id`).all<Row>();
+  const [productRowsResult, optionsResult] = await Promise.all([productRowsPromise, optionsPromise]);
+  const rowsByProduct = new Map<number, StoreSensoryRow[]>();
+  for (const productId of productIds) rowsByProduct.set(productId, []);
+  for (const row of productRowsResult.results) rowsByProduct.get(asNumber(row.product_id))?.push(row);
+  const profilesByProduct = new Map(productIds.map((productId) => [
+    productId,
+    publicSensoryProfileFromRows(rowsByProduct.get(productId) ?? []),
+  ]));
+
+  return {
+    products: products.map((product) => ({
+      ...product,
+      sensoryProfile: profilesByProduct.get(product.id) ?? publicSensoryProfileFromRows([]),
+    })),
+    sensoryOptions: optionsResult.results
+      .map(publicSensoryOptionFromRow)
+      .filter((option): option is PublicSensoryOption => Boolean(option)),
+  };
+}
 async function listStoreCollections(): Promise<StoreCollection[]> {
   const result=await db().prepare(`SELECT c.id,c.name,c.slug,COALESCE(c.description,'') description,c.sort_order
     FROM collections c
@@ -361,7 +416,7 @@ async function createStoreOrder(body: Record<string, unknown>) {
       return { number, accessToken, possibleExistingClient: client.possibleExistingClient };
     });
     if ("duplicateNumber" in result) return { order: await orderByNumber(asString(result.duplicateNumber), asString(result.accessToken)), duplicate: true, settings: await getSettings(), accessToken: asString(result.accessToken) };
-    if ("priceChanged" in result && result.priceChanged) return { priceChanged: true, changes: result.changes, products: await listStoreProducts(token) };
+    if ("priceChanged" in result && result.priceChanged) return { priceChanged: true, changes: result.changes, products: (await listStoreProductsWithSensory(token)).products };
     return { order: await orderByNumber(asString(result.number), asString(result.accessToken)), duplicate: false, settings: await getSettings(), accessToken: asString(result.accessToken), possibleExistingClient: Boolean(result.possibleExistingClient) };
   } catch (cause) {
     // A repeated click can race the idempotency lookup; the unique key is the
@@ -379,10 +434,10 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const entity = asString(url.searchParams.get("entity")) || "products";
     if (entity === "settings") return json(await getSettings());
-    if (entity === "products") { const token = asString(url.searchParams.get("token")); const [products,collections,reservation] = await Promise.all([listStoreProducts(token),listStoreCollections(),token ? reservationByToken(token) : Promise.resolve(null)]); const reservationExpiresAt = reservation && Boolean(reservation.is_active) ? asString(reservation.expires_at) : ""; return json({ products,collections,reservationExpiresAt }); }
+    if (entity === "products") { const token = asString(url.searchParams.get("token")); const [catalog,collections,reservation] = await Promise.all([listStoreProductsWithSensory(token),listStoreCollections(),token ? reservationByToken(token) : Promise.resolve(null)]); const reservationExpiresAt = reservation && Boolean(reservation.is_active) ? asString(reservation.expires_at) : ""; return json({ products: catalog.products,collections,sensoryOptions: catalog.sensoryOptions,reservationExpiresAt }); }
     if (entity === "product") {
       const id = asNumber(url.searchParams.get("id"));
-      const product = (await listStoreProducts(asString(url.searchParams.get("token")))).find((item) => item.id === id);
+      const product = (await listStoreProductsWithSensory(asString(url.searchParams.get("token")))).products.find((item) => item.id === id);
       return product ? json({ product }) : errorResponse("Producto no disponible.", 404);
     }
     if (entity === "order") {

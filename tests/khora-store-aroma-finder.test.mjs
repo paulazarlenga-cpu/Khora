@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   aromaMatchLabel,
@@ -6,6 +7,9 @@ import {
   hasPublicSensoryContent,
   publicSensoryProfileFromRows,
 } from "../app/khora-aroma-match.ts";
+
+const root = new URL("../", import.meta.url);
+const read = (path) => readFile(new URL(path, root), "utf8");
 
 test("el buscador suma una coincidencia por cada respuesta elegida", () => {
   const profile = publicSensoryProfileFromRows([
@@ -45,4 +49,21 @@ test("el perfil público ordena sus opciones y detecta contenido real", () => {
   assert.deepEqual(profile.families.map((option) => option.slug), ["dulce"]);
   assert.equal(hasPublicSensoryContent(profile), true);
   assert.equal(hasPublicSensoryContent(publicSensoryProfileFromRows([])), false);
+});
+
+test("la tienda proyecta perfiles activos sin exponer notas privadas", async () => {
+  const route = await read("app/api/tienda/route.ts");
+
+  assert.match(route, /JOIN sensory_options so ON so\.id=pso\.option_id AND so\.kind=pso\.kind/);
+  assert.match(route, /so\.active=TRUE/);
+  assert.match(route, /publicSensoryProfileFromRows/);
+  assert.match(route, /sensoryOptions/);
+  assert.doesNotMatch(route, /code_base\.description[\s\S]*sensory/i);
+});
+
+test("la fuente de disponibilidad del catálogo se conserva para recomendaciones", async () => {
+  const route = await read("app/api/tienda/route.ts");
+
+  assert.match(route, /khora_available_product_stock\(\?\)/);
+  assert.match(route, /p\.active=1 AND p\.store_published=TRUE AND p\.sale_price_cents>0/);
 });
