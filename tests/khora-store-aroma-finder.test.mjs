@@ -206,3 +206,12 @@ test("el hero de aromas aprovecha el espacio superior y conserva contraste sobre
   assert.match(css, /\.aromaHero h1 em\{color:#795333/);
   assert.match(css, /\.aromaHero>p:last-child\{[^}]*color:#274a3c/);
 });
+test("los resultados de aroma reemplazan el hero por fichas de producto editoriales", async () => {
+  const finder = await read("app/khora-aroma-finder.tsx");
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(finder, /\{!showResults && <section className=\{`\$\{styles\.aromaIntro\} \$\{styles\.aromaHero\}`\}/);
+  assert.match(finder, /className=\{styles\.aromaResultAdd\}/);
+  assert.match(finder, />PRODUCTO<\/p>/);
+  assert.match(css, /\.aromaResultAdd\{/);
+});
