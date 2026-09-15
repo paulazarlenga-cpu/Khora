@@ -215,3 +215,17 @@ test("los resultados de aroma reemplazan el hero por fichas de producto editoria
   assert.match(finder, />PRODUCTO<\/p>/);
   assert.match(css, /\.aromaResultAdd\{/);
 });
+test("los resultados muestran compatibilidad calculada y un regreso con microinteracción", async () => {
+  const finder = await read("app/khora-aroma-finder.tsx");
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(finder, /className=\{styles\.aromaCompatibility\}>\{match\.label\}/);
+  assert.match(finder, /className=\{`\$\{styles\.linkButton\} \$\{styles\.aromaChangeAnswers\}`\}/);
+  assert.match(css, /\.aromaChangeAnswers::after\{/);
+  assert.match(css, /\.aromaChangeAnswers:hover span/);
+});
+test("el acceso Encontrá tu aroma se mantiene en una sola línea en desktop", async () => {
+  const css = await read("app/tienda/store.module.css");
+
+  assert.match(css, /\.header nav > button\.navItem:nth-of-type\(4\)\{[^}]*min-width:140px[^}]*white-space:nowrap/);
+});

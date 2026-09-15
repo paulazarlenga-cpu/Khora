@@ -119,11 +119,11 @@ export function AromaFinder({ products, options, saving, onOpenProduct, onAddPro
       </> : <section className={styles.aromaResults} aria-labelledby="aroma-results-title">
         <div className={styles.aromaResultsHeading}>
           <div><p className={styles.eyebrow}>TU SELECCIÓN KHORA</p><h2 id="aroma-results-title">Aromas para tu momento</h2></div>
-          <button className={styles.linkButton} type="button" onClick={changeAnswers}>Cambiar respuestas <span>↗</span></button>
+          <button className={`${styles.linkButton} ${styles.aromaChangeAnswers}`} type="button" onClick={changeAnswers}>Cambiar respuestas <span>↗</span></button>
         </div>
-        {matches.length ? <div className={styles.aromaResultGrid}>{visibleMatches.map(({ product }) => <article className={styles.aromaResultCard} key={product.id}>
+        {matches.length ? <div className={styles.aromaResultGrid}>{visibleMatches.map(({ product, match }) => <article className={styles.aromaResultCard} key={product.id}>
           <button className={styles.aromaProductVisual} type="button" onClick={() => onOpenProduct(product.id)} aria-label={`Ver ${product.name}`}><FinderProductImage product={product} /></button>
-          <div className={styles.aromaResultBody}><p className={styles.aromaMatchLabel}>PRODUCTO</p><h3>{product.name}</h3><div className={styles.aromaResultMeta}><strong>{money(product.priceCents)}</strong><span>Disponible</span></div><button className={styles.aromaResultAdd} type="button" onClick={() => onAddProduct(product.id)} disabled={saving}>Agregar a la bolsa <span>→</span></button></div>
+          <div className={styles.aromaResultBody}><p className={styles.aromaMatchLabel}>PRODUCTO</p><p className={styles.aromaCompatibility}>{match.label}</p><h3>{product.name}</h3><div className={styles.aromaResultMeta}><strong>{money(product.priceCents)}</strong><span>Disponible</span></div><button className={styles.aromaResultAdd} type="button" onClick={() => onAddProduct(product.id)} disabled={saving}>Agregar a la bolsa <span>→</span></button></div>
         </article>)}</div> : <div className={styles.aromaNoMatch}><h3>Probemos otro camino</h3><p>No encontramos una combinación exacta entre los aromas disponibles hoy.</p><button className={styles.primary} type="button" onClick={changeAnswers}>Cambiar respuestas <span>→</span></button></div>}
         {matches.length > 3 && !showAll && <button className={styles.linkButton} type="button" onClick={() => setShowAll(true)}>Ver todos los resultados <span>↓</span></button>}
       </section>}
