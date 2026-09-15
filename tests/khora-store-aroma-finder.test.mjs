@@ -229,3 +229,9 @@ test("el acceso Encontrá tu aroma se mantiene en una sola línea en desktop", a
 
   assert.match(css, /\.header nav > button\.navItem:nth-of-type\(4\)\{[^}]*min-width:140px[^}]*white-space:nowrap/);
 });
+test("los resultados suben al inicio del bloque visible sin reducir las fichas", async () => {
+  const css = await read("app/tienda/store.module.css");
+  const resultsRule = /\.aromaResults\{([^}]*)\}/.exec(css)?.[1] ?? "";
+
+  assert.match(resultsRule, /margin:0 auto/);
+});
